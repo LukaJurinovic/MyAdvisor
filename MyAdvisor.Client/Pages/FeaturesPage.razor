@@ -1,19 +1,17 @@
-@page "/demo"
-@inject NavigationManager Nav
-@inject AuthService AuthService
+@page "/features"
+@inherits AuthenticatedPageBase
 
-<nav class="bg-white border-b border-[#E5E7EB] px-8 py-4 flex items-center justify-between">
-    <span class="text-xl font-semibold text-gray-900">MyAdvisor</span>
-    <div class="flex items-center gap-4">
+<AppNavBar OnLogout="LogoutAsync">
+    <RightContent>
         <a href="/diary" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">Diary</a>
         <a href="/chat" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">AI Advisor</a>
-    </div>
-</nav>
+    </RightContent>
+</AppNavBar>
 
 <main class="max-w-4xl mx-auto px-4 py-10">
 
     <div class="text-center mb-12">
-        <h1 class="text-3xl font-bold text-gray-900 mb-3">MyAdvisor Feature Demo</h1>
+        <h1 class="text-3xl font-bold text-gray-900 mb-3">MyAdvisor Features</h1>
         <p class="text-gray-500 text-sm max-w-xl mx-auto">A walkthrough of every AI-powered feature built into the app. Click any step to try it live.</p>
     </div>
 
@@ -191,10 +189,3 @@
     </div>
 </main>
 
-@code {
-    protected override async Task OnInitializedAsync()
-    {
-        if (!await AuthService.IsAuthenticatedAsync())
-            Nav.NavigateTo("/login");
-    }
-}

@@ -1,23 +1,18 @@
 @page "/diary"
+@inherits AuthenticatedPageBase
 @using MyAdvisor.Client.Models.AI
-@inject AuthService AuthService
 @inject DiaryService DiaryService
 @inject TransactionService TransactionService
 @inject CategoryService CategoryService
 @inject AiImportService AiImportService
-@inject NavigationManager Nav
 @inject IJSRuntime JS
 
-<nav class="bg-white border-b border-[#E5E7EB] px-8 py-4 flex items-center justify-between">
-    <span class="text-xl font-semibold text-gray-900">MyAdvisor</span>
-    <div class="flex items-center gap-4">
+<AppNavBar OnLogout="LogoutAsync">
+    <RightContent>
         <a href="/chat" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">💬 AI Advisor</a>
-        <a href="/demo" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">🎯 Demo</a>
-        <button @onclick="LogoutAsync" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-            Log out
-        </button>
-    </div>
-</nav>
+        <a href="/features" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">Features</a>
+    </RightContent>
+</AppNavBar>
 
 <main class="max-w-5xl mx-auto px-4 py-8">
     <div class="flex items-center justify-between mb-6">
@@ -440,6 +435,7 @@
 
     private decimal GetDisplayAmount(PendingTransactionModel tx)
     {
+        if (tx.Amount > 0) return tx.Amount;
         var abs = Math.Abs(tx.Amount);
         return importAsExpense ? -abs : abs;
     }
@@ -500,6 +496,7 @@
             var approved = aiPreview.PendingTransactions.Where(t => t.Approved).ToList();
             foreach (var t in approved)
             {
+                if (t.Amount > 0) continue;
                 var abs = Math.Abs(t.Amount);
                 t.Amount = importAsExpense ? -abs : abs;
             }
@@ -532,13 +529,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         try
         {
-            if (!await AuthService.IsAuthenticatedAsync())
-            {
-                Nav.NavigateTo("/login");
-                return;
-            }
             await Task.WhenAll(LoadDiariesAsync(), LoadCategoriesAsync());
         }
         catch (Exception ex)
@@ -747,7 +740,7 @@
     }
 
     private static string FormatAmountValue(decimal amount)
-        => amount > 0 ? amount.ToString("F2") : "";
+        => amount != 0 ? amount.ToString("F2") : "";
 
     private static decimal ParseAmountInput(string? input)
     {
@@ -760,9 +753,4 @@
     private string? GetCategoryName(int? categoryId)
         => categoryId is null ? null : categories.FirstOrDefault(c => c.Id == categoryId)?.Name;
 
-    private async Task LogoutAsync()
-    {
-        await AuthService.LogoutAsync();
-        Nav.NavigateTo("/login");
-    }
 }

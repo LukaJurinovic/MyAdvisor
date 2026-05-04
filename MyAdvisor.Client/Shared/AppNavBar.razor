@@ -1,0 +1,16 @@
+<nav class="bg-white border-b border-[#E5E7EB] px-8 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-6">
+        <span class="text-xl font-semibold text-gray-900">MyAdvisor</span>
+        @LeftContent
+    </div>
+    <div class="flex items-center gap-4">
+        @RightContent
+        <button @onclick="OnLogout" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">Log out</button>
+    </div>
+</nav>
+
+@code {
+    [Parameter] public RenderFragment? LeftContent { get; set; }
+    [Parameter] public RenderFragment? RightContent { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnLogout { get; set; }
+}

@@ -59,22 +59,24 @@ namespace MyAdvisor.Infrastructure
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddSingleton<JwtTokenGenerator>();
 
-            // Mappers
-            services.AddScoped<UserMapper>();
-            services.AddScoped<CategoryMapper>();
-            services.AddScoped<FinancialDiaryMapper>();
-            services.AddScoped<TransactionMapper>();
+            // Mappers (stateless — singleton is correct)
+            services.AddSingleton<UserMapper>();
+            services.AddSingleton<CategoryMapper>();
+            services.AddSingleton<FinancialDiaryMapper>();
+            services.AddSingleton<TransactionMapper>();
 
             // Identity services
-            services.AddScoped<IdentityService>();
+            services.AddScoped<IIdentityService, IdentityService>();
             services.AddScoped<ITokenService, TokenService>();
             services.AddScoped<IAuthService, AuthService>();
 
             // Domain services
+            services.AddScoped<IRefreshTokenService, RefreshTokenService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<ICategoryService, CategoryService>();
             services.AddScoped<IFinancialDiaryService, FinancialDiaryService>();
             services.AddScoped<ITransactionService, TransactionService>();
+            services.AddScoped<ITransactionAiLogService, TransactionAiLogService>();
 
             // App services
             services.AddScoped<IDiaryTransactionService, DiaryTransactionService>();
@@ -83,7 +85,12 @@ namespace MyAdvisor.Infrastructure
 
             // AI / Gemini
             services.Configure<GeminiSettings>(configuration.GetSection("GeminiSettings"));
-            services.AddHttpClient<IGeminiService, GeminiService>();
+            services.AddHttpClient<IGeminiService, GeminiService>((sp, client) =>
+            {
+                var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiSettings>>().Value;
+                client.BaseAddress = new Uri(settings.BaseUrl);
+                client.DefaultRequestHeaders.Add("x-goog-api-key", settings.ApiKey);
+            });
 
             // Repositories
             services.AddScoped<IUserRepository, UserRepository>();

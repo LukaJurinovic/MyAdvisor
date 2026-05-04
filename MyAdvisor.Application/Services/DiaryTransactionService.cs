@@ -17,31 +17,9 @@ namespace MyAdvisor.Application.Services
             _transactionService = transactionService;
         }
 
-        public Task<TransactionDto> GetByIdAsync(int id)
-            => _transactionService.GetByIdAsync(id);
-
-        public Task<IReadOnlyList<TransactionDto>> GetByDiaryIdAsync(int diaryId)
-            => _transactionService.GetByDiaryIdAsync(diaryId);
-
-        public async Task<TransactionDto> AddAsync(AddTransactionRequestDto request, int userId)
+        public async Task<TransactionDto> GetByIdAsync(int id, int userId)
         {
-            var diary = await _diaryService.GetByIdAsync(request.DiaryId)
-                ?? throw new KeyNotFoundException($"Diary {request.DiaryId} not found.");
-
-            if (diary.UserId != userId)
-                throw new UnauthorizedAccessException();
-
-            var transaction = await _transactionService.AddAsync(request);
-
-            var newTotal = await _transactionService.GetTotalByDiaryIdAsync(request.DiaryId);
-            await _diaryService.UpdateTotalAsync(request.DiaryId, newTotal);
-
-            return transaction;
-        }
-
-        public async Task<TransactionDto> UpdateAsync(int transactionId, UpdateTransactionRequestDto request, int userId)
-        {
-            var transaction = await _transactionService.GetByIdAsync(transactionId);
+            var transaction = await _transactionService.GetByIdAsync(id);
 
             var diary = await _diaryService.GetByIdAsync(transaction.DiaryId)
                 ?? throw new KeyNotFoundException($"Diary {transaction.DiaryId} not found.");
@@ -49,28 +27,33 @@ namespace MyAdvisor.Application.Services
             if (diary.UserId != userId)
                 throw new UnauthorizedAccessException();
 
-            var updated = await _transactionService.UpdateAsync(transactionId, request);
+            return transaction;
+        }
 
-            var newTotal = await _transactionService.GetTotalByDiaryIdAsync(transaction.DiaryId);
-            await _diaryService.UpdateTotalAsync(transaction.DiaryId, newTotal);
+        public async Task<IReadOnlyList<TransactionDto>> GetByDiaryIdAsync(int diaryId, int userId)
+        {
+            var diary = await _diaryService.GetByIdAsync(diaryId)
+                ?? throw new KeyNotFoundException($"Diary {diaryId} not found.");
 
-            return updated;
+            if (diary.UserId != userId)
+                throw new UnauthorizedAccessException();
+
+            return await _transactionService.GetByDiaryIdAsync(diaryId);
+        }
+
+        public Task<TransactionDto> AddAsync(AddTransactionRequestDto request, int userId)
+            => _diaryService.AddTransactionAsync(request, userId);
+
+        public async Task<TransactionDto> UpdateAsync(int transactionId, UpdateTransactionRequestDto request, int userId)
+        {
+            var transaction = await _transactionService.GetByIdAsync(transactionId);
+            return await _diaryService.UpdateTransactionAsync(transaction.DiaryId, transactionId, request, userId);
         }
 
         public async Task DeleteAsync(int transactionId, int userId)
         {
             var transaction = await _transactionService.GetByIdAsync(transactionId);
-
-            var diary = await _diaryService.GetByIdAsync(transaction.DiaryId)
-                ?? throw new KeyNotFoundException($"Diary {transaction.DiaryId} not found.");
-
-            if (diary.UserId != userId)
-                throw new UnauthorizedAccessException();
-
-            await _transactionService.DeleteAsync(transactionId);
-
-            var newTotal = await _transactionService.GetTotalByDiaryIdAsync(transaction.DiaryId);
-            await _diaryService.UpdateTotalAsync(transaction.DiaryId, newTotal);
+            await _diaryService.DeleteTransactionAsync(transaction.DiaryId, transactionId, userId);
         }
     }
 }

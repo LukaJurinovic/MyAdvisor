@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MyAdvisor.Application.DTOs.Category;
 using MyAdvisor.Application.Interfaces.Services.Domain;
 
 namespace MyAdvisor.Api.Controllers
@@ -20,6 +21,20 @@ namespace MyAdvisor.Api.Controllers
         {
             var categories = await _categoryService.GetAllAsync();
             return Ok(categories);
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Create([FromBody] CreateCategoryRequestDto request)
+        {
+            try
+            {
+                var category = await _categoryService.CreateAsync(request);
+                return CreatedAtAction(nameof(GetAll), category);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { error = ex.Message });
+            }
         }
     }
 }

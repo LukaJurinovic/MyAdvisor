@@ -5,6 +5,7 @@ namespace MyAdvisor.Application.DTOs.AI
     public record AiTransactionImportResultDto(
         IReadOnlyList<TransactionDto> ImportedTransactions,
         int TotalFound,
-        int SuccessfullyImported
+        int SuccessfullyImported,
+        int FailedCount
     );
 }

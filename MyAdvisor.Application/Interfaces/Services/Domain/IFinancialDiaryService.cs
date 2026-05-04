@@ -1,4 +1,5 @@
 using MyAdvisor.Application.DTOs.FinancialDiary;
+using MyAdvisor.Application.DTOs.Transaction;
 
 namespace MyAdvisor.Application.Interfaces.Services.Domain
 {
@@ -6,9 +7,13 @@ namespace MyAdvisor.Application.Interfaces.Services.Domain
     {
         Task<FinancialDiaryDto?> GetByIdAsync(int id);
         Task<IReadOnlyList<FinancialDiarySummaryDto>> GetAllAsync(int userId);
+        Task<IReadOnlyList<FinancialDiaryDto>> GetAllWithTransactionsAsync(int userId);
         Task<FinancialDiaryDto> CreateAsync(CreateFinancialDiaryRequestDto request, int userId);
         Task<FinancialDiaryDto> UpdateAsync(int id, UpdateFinancialDiaryRequestDto request);
-        Task UpdateTotalAsync(int id, decimal total);
         Task DeleteAsync(int id);
+
+        Task<TransactionDto> AddTransactionAsync(AddTransactionRequestDto request, int userId);
+        Task<TransactionDto> UpdateTransactionAsync(int diaryId, int transactionId, UpdateTransactionRequestDto request, int userId);
+        Task DeleteTransactionAsync(int diaryId, int transactionId, int userId);
     }
 }

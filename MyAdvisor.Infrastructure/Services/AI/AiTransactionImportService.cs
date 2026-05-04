@@ -1,11 +1,11 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using MyAdvisor.Application.DTOs.AI;
 using MyAdvisor.Application.DTOs.Transaction;
-using MyAdvisor.Application.Interfaces.Repositories;
+using MyAdvisor.Application.Interfaces.Contracts;
 using MyAdvisor.Application.Interfaces.Services.AI;
 using MyAdvisor.Application.Interfaces.Services.App;
 using MyAdvisor.Application.Interfaces.Services.Domain;
-using MyAdvisor.Domain.Entities;
 using MyAdvisor.Domain.Enums;
 
 namespace MyAdvisor.Infrastructure.Services.AI
@@ -14,22 +14,25 @@ namespace MyAdvisor.Infrastructure.Services.AI
     {
         private readonly IGeminiService _gemini;
         private readonly IFinancialDiaryService _diaryService;
-        private readonly ITransactionService _transactionService;
-        private readonly ITransactionAiLogRepository _aiLogRepository;
-        private readonly ICategoryRepository _categoryRepository;
+        private readonly ICategoryService _categoryService;
+        private readonly ITransactionAiLogService _aiLogService;
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<AiTransactionImportService> _logger;
 
         public AiTransactionImportService(
             IGeminiService gemini,
             IFinancialDiaryService diaryService,
-            ITransactionService transactionService,
-            ITransactionAiLogRepository aiLogRepository,
-            ICategoryRepository categoryRepository)
+            ICategoryService categoryService,
+            ITransactionAiLogService aiLogService,
+            IUnitOfWork unitOfWork,
+            ILogger<AiTransactionImportService> logger)
         {
             _gemini = gemini;
             _diaryService = diaryService;
-            _transactionService = transactionService;
-            _aiLogRepository = aiLogRepository;
-            _categoryRepository = categoryRepository;
+            _categoryService = categoryService;
+            _aiLogService = aiLogService;
+            _unitOfWork = unitOfWork;
+            _logger = logger;
         }
 
         public async Task<AiImportPreviewDto> PreviewFromImageAsync(int diaryId, int userId, byte[] imageData, string mimeType)
@@ -40,7 +43,7 @@ namespace MyAdvisor.Infrastructure.Services.AI
             if (diary.UserId != userId)
                 throw new UnauthorizedAccessException();
 
-            var categories = await _categoryRepository.GetAllAsync();
+            var categories = await _categoryService.GetAllAsync();
             var categoryNames = string.Join(", ", categories.Select(c => c.Name));
 
             var rawResponse = await _gemini.AnalyzeImageAsync(imageData, mimeType, BuildPrompt(categoryNames));
@@ -68,89 +71,93 @@ namespace MyAdvisor.Infrastructure.Services.AI
 
         public async Task<AiTransactionImportResultDto> ConfirmImportAsync(int userId, AiConfirmImportRequestDto request)
         {
-            var diary = await _diaryService.GetByIdAsync(request.DiaryId)
-                ?? throw new KeyNotFoundException($"Diary {request.DiaryId} not found.");
-
-            if (diary.UserId != userId)
-                throw new UnauthorizedAccessException();
-
-            var categories = await _categoryRepository.GetAllAsync();
-            var categoryList = categories.ToList();
-
-            foreach (var newCatName in request.ApprovedNewCategories)
-            {
-                var exists = categoryList.Any(c => string.Equals(c.Name, newCatName, StringComparison.OrdinalIgnoreCase));
-                if (!exists)
-                {
-                    var newCat = new Category(newCatName);
-                    await _categoryRepository.AddAsync(newCat);
-                    categoryList.Add(newCat);
-                }
-            }
-
             var imported = new List<TransactionDto>();
+            var failed = 0;
 
-            foreach (var item in request.ApprovedTransactions)
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
-                try
+                foreach (var newCatName in request.ApprovedNewCategories)
+                    await _categoryService.EnsureCreatedAsync(newCatName);
+
+                var categories = await _categoryService.GetAllAsync();
+                var catLookup = categories.ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var item in request.ApprovedTransactions)
                 {
-                    var matchedCategory = categoryList.FirstOrDefault(c =>
-                        string.Equals(c.Name, item.CategoryName, StringComparison.OrdinalIgnoreCase));
+                    try
+                    {
+                        catLookup.TryGetValue(item.CategoryName ?? string.Empty, out var matchedCategory);
 
-                    var addRequest = new AddTransactionRequestDto(
-                        DiaryId: request.DiaryId,
-                        Amount: item.Amount,
-                        CategoryId: matchedCategory?.Id,
-                        Description: item.Description,
-                        TransactionDate: item.TransactionDate,
-                        PaymentMethod: ParsePaymentMethod(item.PaymentMethod)
-                    );
+                        var addRequest = new AddTransactionRequestDto(
+                            DiaryId: request.DiaryId,
+                            Amount: item.Amount,
+                            CategoryId: matchedCategory?.Id,
+                            Description: item.Description,
+                            TransactionDate: item.TransactionDate,
+                            PaymentMethod: ParsePaymentMethod(item.PaymentMethod)
+                        );
 
-                    var transactionDto = await _transactionService.AddAsync(addRequest);
-                    imported.Add(transactionDto);
+                        var transactionDto = await _diaryService.AddTransactionAsync(addRequest, userId);
+                        imported.Add(transactionDto);
 
-                    var confidence = matchedCategory is not null
-                        ? Math.Clamp(item.Confidence, 0.5m, 1.0m)
-                        : Math.Clamp(item.Confidence * 0.6m, 0m, 1m);
+                        var confidence = matchedCategory is not null
+                            ? Math.Clamp(item.Confidence, 0.5m, 1.0m)
+                            : Math.Clamp(item.Confidence * 0.6m, 0m, 1m);
 
-                    var log = new TransactionAiLog(
-                        transactionId: transactionDto.Id,
-                        rawOcrText: item.Description ?? string.Empty,
-                        aiCategoryId: matchedCategory?.Id,
-                        aiConfidence: confidence
-                    );
-
-                    await _aiLogRepository.AddAsync(log);
+                        await _aiLogService.AddAsync(
+                            transactionId: transactionDto.Id,
+                            rawOcrText: item.Description,
+                            aiCategoryId: matchedCategory?.Id,
+                            confidence: confidence);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Skipped transaction item due to processing error: {Description}", item.Description);
+                        failed++;
+                    }
                 }
-                catch
-                {
-                    // skip malformed items
-                }
-            }
-
-            var newTotal = await _transactionService.GetTotalByDiaryIdAsync(request.DiaryId);
-            await _diaryService.UpdateTotalAsync(request.DiaryId, newTotal);
+            });
 
             return new AiTransactionImportResultDto(
                 ImportedTransactions: imported,
                 TotalFound: request.ApprovedTransactions.Count,
-                SuccessfullyImported: imported.Count
+                SuccessfullyImported: imported.Count,
+                FailedCount: failed
             );
         }
 
         private static string BuildPrompt(string categoryNames) => $$"""
             You are a precise financial transaction extractor.
-            Analyze the image (bank statement, receipt, expense list, or similar document) and extract EVERY transaction visible.
+            Analyze the image (bank statement, receipt, expense list, or similar document) and extract individual purchased items as separate transactions.
 
             Respond ONLY with a raw JSON array. No explanation, no markdown, no code fences — just the array itself.
 
             Each object must have EXACTLY these fields:
-            - "amount":          number — negative for expenses/payments, positive for income/deposits
+            - "amount":          number — the actual total price paid for that line item (negative for expenses/payments, positive for income/deposits)
             - "description":     string or null
             - "categoryName":    string — see rules below
             - "paymentMethod":   string — one of: Cash, Card, Transfer, Other
             - "transactionDate": string in "yyyy-MM-dd" format (use today's date if not visible)
             - "confidence":      number between 0.0 and 1.0
+
+            SKIP RULES (critical — do NOT create an entry for any of these lines):
+            - Receipt totals / subtotals: lines labelled UKUPNO, SVEUKUPNO, TOTAL, SUBTOTAL, MEĐUZBROJ, or any "TOTAL" variant
+            - Tax lines: PDV, VAT, porez, or any line that represents a tax amount
+            - Payment confirmation lines: lines starting with PLAĆENO, PLAĆANJE, PAID, PAYMENT, or listing a tender amount (e.g. "PLAĆENO: Gotovina 110,55")
+            - Summary discount lines: "Ukupan popust", "Ukupni popust", "Ukupno popust" — these are totals of discounts already counted in item prices
+            - Any line that is clearly a receipt footer, store info, cashier info, or barcode
+
+            AMOUNT RULES (critical):
+            - For weight-based items (e.g. "Banana 0.5 kg x 3.50 €/kg = 1.75 €"), use the final line total (1.75), NOT the unit price per kg (3.50)
+            - Individual discount lines (POPUST, RABAT, DISCOUNT) that appear right after a specific item are valid entries — use a POSITIVE amount (e.g. +2.30) because they reduce what you paid, not add to it
+
+            PAYMENT METHOD RULES (critical):
+            - Look for a line starting with PLAĆENO or similar near the bottom of the receipt — it tells you how the entire purchase was paid
+            - "Gotovina" or "GOTOVINA" = Cash → set paymentMethod to "Cash" for ALL items on that receipt
+            - "Kartica" or "KARTICA" or "KREDITNA" = Card → set paymentMethod to "Card" for ALL items
+            - "Transakcija" or "TRANSAKCIJA" = Transfer → set paymentMethod to "Transfer" for ALL items
+            - If no payment line is found, default to "Cash"
+            - Apply the same paymentMethod to every item — do not use "Other" unless the method is truly ambiguous
 
             CATEGORY RULES (important):
             - First try to match from this existing list: {{categoryNames}}
@@ -158,31 +165,39 @@ namespace MyAdvisor.Infrastructure.Services.AI
             - If NO good match exists, invent a short descriptive category name (e.g. "Pet Care", "Medical", "Subscriptions", "Home Repair")
             - NEVER use "Other" — always use a specific descriptive name
 
-            Example:
-            [{"amount":-12.50,"description":"Coffee Shop","categoryName":"Food","paymentMethod":"Card","transactionDate":"2025-03-01","confidence":0.95}]
+            Example (item + discount on a receipt paid by cash):
+            [
+              {"amount":-1.75,"description":"Banana 0.5 kg","categoryName":"Groceries","paymentMethod":"Cash","transactionDate":"2025-03-01","confidence":0.95},
+              {"amount":0.35,"description":"POPUST","categoryName":"Groceries","paymentMethod":"Cash","transactionDate":"2025-03-01","confidence":0.95}
+            ]
+            Note: the discount entry has a POSITIVE amount (0.35, not -0.35) even if the receipt prints it with a minus sign.
 
             If no transactions are found, return: []
             """;
 
+        private static readonly HashSet<string> _discountKeywords =
+            ["popust", "rabat", "discount", "sniženje", "akcija"];
+
         private static List<ParsedTransaction> ParseGeminiResponse(string raw)
         {
+            List<ParsedTransaction> items;
             try
             {
-                var cleaned = raw.Trim();
-                if (cleaned.StartsWith("```"))
-                {
-                    var firstNewline = cleaned.IndexOf('\n');
-                    if (firstNewline >= 0) cleaned = cleaned[(firstNewline + 1)..];
-                    var lastFence = cleaned.LastIndexOf("```");
-                    if (lastFence >= 0) cleaned = cleaned[..lastFence];
-                    cleaned = cleaned.Trim();
-                }
-                return JsonSerializer.Deserialize<List<ParsedTransaction>>(
-                    cleaned,
+                items = JsonSerializer.Deserialize<List<ParsedTransaction>>(
+                    raw,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
                 ) ?? [];
             }
             catch { return []; }
+
+            foreach (var item in items)
+            {
+                var desc = item.Description?.ToLowerInvariant() ?? "";
+                if (_discountKeywords.Any(k => desc.Contains(k)) && item.Amount < 0)
+                    item.Amount = -item.Amount;
+            }
+
+            return items;
         }
 
         private static PaymentMethod? ParsePaymentMethod(string? raw) =>

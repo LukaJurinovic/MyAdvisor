@@ -20,3 +20,7 @@ node_modules/
 .claude/
 # Environment secrets
 .env
+# Local dev settings — use dotnet user-secrets or GeminiSettings__ApiKey env var instead
+appsettings.Development.json
+# Planning docs
+plan.md

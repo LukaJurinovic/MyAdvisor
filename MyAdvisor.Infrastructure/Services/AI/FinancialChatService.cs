@@ -1,27 +1,24 @@
 using MyAdvisor.Application.DTOs.AI;
-using MyAdvisor.Application.Interfaces.Repositories;
 using MyAdvisor.Application.Interfaces.Services.AI;
 using MyAdvisor.Application.Interfaces.Services.App;
+using MyAdvisor.Application.Interfaces.Services.Domain;
 
 namespace MyAdvisor.Infrastructure.Services.AI
 {
     public class FinancialChatService : IFinancialChatService
     {
         private readonly IGeminiService _gemini;
-        private readonly ITransactionRepository _transactionRepository;
-        private readonly IFinancialDiaryRepository _diaryRepository;
-        private readonly ICategoryRepository _categoryRepository;
+        private readonly IFinancialDiaryService _diaryService;
+        private readonly ICategoryService _categoryService;
 
         public FinancialChatService(
             IGeminiService gemini,
-            ITransactionRepository transactionRepository,
-            IFinancialDiaryRepository diaryRepository,
-            ICategoryRepository categoryRepository)
+            IFinancialDiaryService diaryService,
+            ICategoryService categoryService)
         {
             _gemini = gemini;
-            _transactionRepository = transactionRepository;
-            _diaryRepository = diaryRepository;
-            _categoryRepository = categoryRepository;
+            _diaryService = diaryService;
+            _categoryService = categoryService;
         }
 
         public async Task<ChatResponseDto> ChatAsync(int userId, ChatRequestDto request)
@@ -29,6 +26,24 @@ namespace MyAdvisor.Infrastructure.Services.AI
             var systemPrompt = await BuildSystemPromptAsync(userId, request.IncludeFinancialContext);
             var history = request.History.Select(m => (m.Role, m.Content)).ToList();
             var reply = await _gemini.ChatAsync(systemPrompt, history, request.Message);
+            return new ChatResponseDto(reply);
+        }
+
+        public async Task<ChatResponseDto> SummarizeImageAsync(byte[] imageData, string mimeType)
+        {
+            var prompt = """
+                You are a financial analyst reviewing a receipt, bank statement, or financial document.
+                Provide a clear, structured summary covering:
+                1. What type of document this is
+                2. Key amounts and what they represent
+                3. Merchant/vendor details if visible
+                4. Date and payment method if visible
+                5. Any notable observations or insights about the spending
+
+                Be concise and practical. Format your response clearly.
+                """;
+
+            var reply = await _gemini.AnalyzeImageAsync(imageData, mimeType, prompt);
             return new ChatResponseDto(reply);
         }
 
@@ -44,27 +59,21 @@ namespace MyAdvisor.Infrastructure.Services.AI
             if (!includeContext)
                 return basePrompt;
 
-            var diaries = await _diaryRepository.GetByUserIdAsync(userId);
-            var categories = await _categoryRepository.GetAllAsync();
+            var diaries = await _diaryService.GetAllWithTransactionsAsync(userId);
+            var categories = await _categoryService.GetAllAsync();
             var catMap = categories.ToDictionary(c => c.Id, c => c.Name);
 
-            var allTransactions = new List<(string Date, decimal Amount, string? Description, string? Category)>();
+            var allTransactions = diaries
+                .SelectMany(d => d.Transactions)
+                .Select(tx => (
+                    Date: tx.TransactionDate.ToString("yyyy-MM-dd"),
+                    tx.Amount,
+                    tx.Description,
+                    Category: tx.CategoryId.HasValue && catMap.TryGetValue(tx.CategoryId.Value, out var cat) ? cat : null
+                ))
+                .ToList();
 
-            foreach (var diary in diaries)
-            {
-                var transactions = await _transactionRepository.GetByDiaryIdAsync(diary.Id);
-                foreach (var tx in transactions)
-                {
-                    allTransactions.Add((
-                        tx.TransactionDate.ToString("yyyy-MM-dd"),
-                        tx.Amount,
-                        tx.Description,
-                        tx.CategoryId.HasValue && catMap.TryGetValue(tx.CategoryId.Value, out var cat) ? cat : null
-                    ));
-                }
-            }
-
-            if (!allTransactions.Any())
+            if (allTransactions.Count == 0)
                 return basePrompt + "\n\nThe user has no transactions recorded yet.";
 
             var total = allTransactions.Sum(t => t.Amount);

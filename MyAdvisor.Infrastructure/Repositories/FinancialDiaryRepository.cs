@@ -25,6 +25,12 @@ namespace MyAdvisor.Infrastructure.Repositories
         public async Task<IReadOnlyList<FinancialDiary>> GetByUserIdAsync(int userId)
             => await _db.FinancialDiaries.Where(d => d.UserId == userId).ToListAsync();
 
+        public async Task<IReadOnlyList<FinancialDiary>> GetByUserIdWithTransactionsAsync(int userId)
+            => await _db.FinancialDiaries
+                .Where(d => d.UserId == userId)
+                .Include(d => d.Transactions)
+                .ToListAsync();
+
         public Task<FinancialDiary?> GetByUserIdAndDateAsync(int userId, DateTime date)
             => _db.FinancialDiaries.FirstOrDefaultAsync(d => d.UserId == userId && d.Date == date.Date);
 

@@ -24,6 +24,13 @@ public class DiaryService(HttpClient http)
         return (await res.Content.ReadFromJsonAsync<FinancialDiaryModel>())!;
     }
 
+    public async Task<FinancialDiaryModel> UpdateAsync(int id, string? notes)
+    {
+        var res = await http.PutAsJsonAsync($"/api/financialdiary/{id}", new { notes });
+        await ThrowIfErrorAsync(res, "Failed to update diary.");
+        return (await res.Content.ReadFromJsonAsync<FinancialDiaryModel>())!;
+    }
+
     public async Task DeleteAsync(int id)
     {
         var res = await http.DeleteAsync($"/api/financialdiary/{id}");

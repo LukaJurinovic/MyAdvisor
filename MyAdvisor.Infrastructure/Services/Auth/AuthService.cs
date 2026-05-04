@@ -9,13 +9,13 @@ namespace MyAdvisor.Infrastructure.Services.Auth
     {
         private readonly ITokenService _tokenService;
         private readonly IUserService _userService;
-        private readonly IdentityService _identityService;
+        private readonly IIdentityService _identityService;
         private readonly IUnitOfWork _unitOfWork;
 
         public AuthService(
             ITokenService tokenService,
             IUserService userService,
-            IdentityService identityService,
+            IIdentityService identityService,
             IUnitOfWork unitOfWork)
         {
             _tokenService = tokenService;

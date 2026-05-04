@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using MyAdvisor.Application.Interfaces.Repositories;
+using MyAdvisor.Application.Interfaces.Services.Auth;
 
 namespace MyAdvisor.Infrastructure.Services.Background
 {
@@ -29,9 +29,9 @@ namespace MyAdvisor.Infrastructure.Services.Background
         private async Task CleanupAsync()
         {
             using var scope = _scopeFactory.CreateScope();
-            var repository = scope.ServiceProvider.GetRequiredService<IRefreshTokenRepository>();
+            var refreshTokenService = scope.ServiceProvider.GetRequiredService<IRefreshTokenService>();
 
-            await repository.DeleteExpiredAndRevokedAsync();
+            await refreshTokenService.DeleteExpiredAndRevokedAsync();
             _logger.LogInformation("Expired and revoked refresh tokens cleaned up.");
         }
     }

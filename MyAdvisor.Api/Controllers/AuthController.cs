@@ -71,6 +71,10 @@ namespace MyAdvisor.Api.Controllers
             {
                 return BadRequest(new ErrorResponse(ex.Message));
             }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
         }
     }
 }

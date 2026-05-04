@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MyAdvisor.Application.DTOs.AI;
 using MyAdvisor.Application.DTOs.Common;
-using MyAdvisor.Application.Interfaces.Services.AI;
 using MyAdvisor.Application.Interfaces.Services.App;
 
 namespace MyAdvisor.Api.Controllers
@@ -12,12 +11,10 @@ namespace MyAdvisor.Api.Controllers
     public class ChatController : BaseController
     {
         private readonly IFinancialChatService _chatService;
-        private readonly IGeminiService _gemini;
 
-        public ChatController(IFinancialChatService chatService, IGeminiService gemini)
+        public ChatController(IFinancialChatService chatService)
         {
             _chatService = chatService;
-            _gemini = gemini;
         }
 
         [HttpPost]
@@ -52,20 +49,8 @@ namespace MyAdvisor.Api.Controllers
                 using var ms = new MemoryStream();
                 await image.CopyToAsync(ms);
 
-                var prompt = """
-                    You are a financial analyst reviewing a receipt, bank statement, or financial document.
-                    Provide a clear, structured summary covering:
-                    1. What type of document this is
-                    2. Key amounts and what they represent
-                    3. Merchant/vendor details if visible
-                    4. Date and payment method if visible
-                    5. Any notable observations or insights about the spending
-
-                    Be concise and practical. Format your response clearly.
-                    """;
-
-                var reply = await _gemini.AnalyzeImageAsync(ms.ToArray(), image.ContentType, prompt);
-                return Ok(new ChatResponseDto(reply));
+                var response = await _chatService.SummarizeImageAsync(ms.ToArray(), image.ContentType);
+                return Ok(response);
             }
             catch (InvalidOperationException ex)
             {

@@ -9,12 +9,12 @@ namespace MyAdvisor.Infrastructure.Services.AI
     public class GeminiService : IGeminiService
     {
         private readonly HttpClient _http;
-        private readonly GeminiSettings _settings;
+        private readonly string _model;
 
         public GeminiService(HttpClient http, IOptions<GeminiSettings> settings)
         {
             _http = http;
-            _settings = settings.Value;
+            _model = settings.Value.Model;
         }
 
         public async Task<string> AnalyzeImageAsync(byte[] imageData, string mimeType, string prompt)
@@ -35,7 +35,18 @@ namespace MyAdvisor.Infrastructure.Services.AI
                 generationConfig = new { temperature = 0.1, maxOutputTokens = 2048 }
             };
 
-            return await CallGeminiAsync(requestBody);
+            return StripMarkdownFences(await CallGeminiAsync(requestBody));
+        }
+
+        private static string StripMarkdownFences(string raw)
+        {
+            var cleaned = raw.Trim();
+            if (!cleaned.StartsWith("```")) return cleaned;
+            var firstNewline = cleaned.IndexOf('\n');
+            if (firstNewline >= 0) cleaned = cleaned[(firstNewline + 1)..];
+            var lastFence = cleaned.LastIndexOf("```");
+            if (lastFence >= 0) cleaned = cleaned[..lastFence];
+            return cleaned.Trim();
         }
 
         public async Task<string> ChatAsync(string systemPrompt, List<(string Role, string Content)> history, string userMessage)
@@ -69,7 +80,7 @@ namespace MyAdvisor.Infrastructure.Services.AI
 
         private async Task<string> CallGeminiAsync(object requestBody)
         {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/{_settings.Model}:generateContent?key={_settings.ApiKey}";
+            var url = $"v1beta/models/{_model}:generateContent";
             var json = JsonSerializer.Serialize(requestBody);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
