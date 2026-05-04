@@ -1,0 +1,195 @@
+@page "/chat"
+@inherits AuthenticatedPageBase
+@inject ChatService ChatService
+@inject IJSRuntime JS
+
+<AppNavBar OnLogout="LogoutAsync">
+    <LeftContent>
+        <a href="/diary" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">← Diary</a>
+    </LeftContent>
+    <RightContent>
+        <a href="/features" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">Features</a>
+    </RightContent>
+</AppNavBar>
+
+<InputFile id="chat-image-picker" OnChange="HandleImageUpload"
+    accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+
+<main class="max-w-3xl mx-auto px-4 py-6 flex flex-col h-[calc(100vh-65px)]">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h1 class="text-xl font-bold text-gray-900">Financial Advisor</h1>
+            <p class="text-xs text-gray-400 mt-0.5">Powered by Gemini AI</p>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+            <input type="checkbox" @bind="includeContext" class="rounded" />
+            Include my transactions
+        </label>
+    </div>
+
+    <div class="flex-1 overflow-y-auto flex flex-col gap-3 mb-4 pr-1" id="chat-messages">
+        @if (!messages.Any())
+        {
+            <div class="flex flex-col gap-3 mt-4">
+                <p class="text-center text-sm text-gray-400 mb-1">Ask anything about your finances, or try one of these:</p>
+                @foreach (var suggestion in suggestions)
+                {
+                    <button @onclick="() => UseSuggestion(suggestion)"
+                        class="text-left px-4 py-3 bg-white border border-[#E5E7EB] rounded-xl text-sm text-gray-700 hover:bg-gray-50 hover:border-slate-300 transition-colors shadow-sm">
+                        @suggestion
+                    </button>
+                }
+                <div class="mt-2 p-4 bg-violet-50 border border-violet-200 rounded-xl">
+                    <p class="text-sm font-semibold text-violet-800 mb-1">📷 Summarize a receipt or statement</p>
+                    <p class="text-xs text-violet-600 mb-3">Upload any financial document and get an instant AI summary</p>
+                    <button @onclick="TriggerImagePicker" disabled="@thinking"
+                        class="px-4 py-2 bg-violet-700 text-white text-sm font-medium rounded-lg hover:bg-violet-800 transition-colors disabled:opacity-50">
+                        Choose image to summarize
+                    </button>
+                </div>
+            </div>
+        }
+
+        @foreach (var msg in messages)
+        {
+            @if (msg.Role == "user")
+            {
+                <div class="flex justify-end">
+                    <div class="max-w-[80%] px-4 py-3 bg-slate-900 text-white text-sm rounded-2xl rounded-br-sm whitespace-pre-wrap">
+                        @msg.Content
+                    </div>
+                </div>
+            }
+            else if (msg.Role == "image")
+            {
+                <div class="flex justify-end">
+                    <div class="max-w-[80%] px-4 py-3 bg-slate-900 text-white text-sm rounded-2xl rounded-br-sm flex items-center gap-2">
+                        <span>📷</span><span>@msg.Content</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="flex justify-start">
+                    <div class="max-w-[80%] px-4 py-3 bg-white border border-[#E5E7EB] text-gray-800 text-sm rounded-2xl rounded-bl-sm shadow-sm whitespace-pre-wrap">
+                        @msg.Content
+                    </div>
+                </div>
+            }
+        }
+
+        @if (thinking)
+        {
+            <div class="flex justify-start">
+                <div class="px-4 py-3 bg-white border border-[#E5E7EB] text-gray-400 text-sm rounded-2xl rounded-bl-sm shadow-sm">
+                    Thinking...
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="px-4 py-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-md">
+                @error
+            </div>
+        }
+    </div>
+
+    <div class="flex gap-2 items-end border-t border-[#E5E7EB] pt-4">
+        <button @onclick="TriggerImagePicker" disabled="@thinking"
+            title="Summarize an image"
+            class="p-3 border border-[#E5E7EB] rounded-xl text-gray-500 hover:bg-gray-50 hover:text-violet-700 transition-colors disabled:opacity-40 text-lg">
+            📷
+        </button>
+        <textarea @bind="inputMessage" @onkeydown="HandleKeyDown"
+            placeholder="Ask about your spending, budgeting, or upload an image with 📷..."
+            rows="2"
+            class="flex-1 px-4 py-3 border border-[#E5E7EB] rounded-xl text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition resize-none" />
+        <button @onclick="SendMessage" disabled="@(thinking || string.IsNullOrWhiteSpace(inputMessage))"
+            class="px-5 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50 whitespace-nowrap">
+            Send
+        </button>
+    </div>
+</main>
+
+@code {
+    private List<ChatMessage> messages = [];
+    private string inputMessage = string.Empty;
+    private bool thinking;
+    private bool includeContext = true;
+    private string error = string.Empty;
+
+    private readonly List<string> suggestions =
+    [
+        "Summarize my spending and tell me where I'm spending the most",
+        "What categories should I cut back on to save more money?",
+        "Give me a simple monthly budgeting plan based on my transactions",
+        "What's the difference between a savings account and an investment account?",
+        "How can I build an emergency fund?"
+    ];
+
+    private async Task TriggerImagePicker()
+        => await JS.InvokeVoidAsync("triggerFileInput", "chat-image-picker");
+
+    private async Task SendMessage()
+    {
+        var text = inputMessage.Trim();
+        if (string.IsNullOrEmpty(text) || thinking) return;
+
+        error = string.Empty;
+        inputMessage = string.Empty;
+        messages.Add(new ChatMessage { Role = "user", Content = text });
+        thinking = true;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("scrollChatToBottom");
+
+        try
+        {
+            var historyToSend = messages.Take(messages.Count - 1).ToList();
+            var reply = await ChatService.SendAsync(historyToSend, text, includeContext);
+            messages.Add(new ChatMessage { Role = "assistant", Content = reply });
+        }
+        catch (Exception ex) { error = ex.Message; }
+
+        thinking = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("scrollChatToBottom");
+    }
+
+    private async Task HandleImageUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+
+        error = string.Empty;
+        thinking = true;
+        messages.Add(new ChatMessage { Role = "image", Content = file.Name });
+        StateHasChanged();
+        await JS.InvokeVoidAsync("scrollChatToBottom");
+
+        try
+        {
+            using var stream = file.OpenReadStream(20 * 1024 * 1024);
+            var reply = await ChatService.SummarizeImageAsync(stream, file.Name, file.ContentType);
+            messages.Add(new ChatMessage { Role = "assistant", Content = reply });
+        }
+        catch (Exception ex) { error = ex.Message; }
+
+        thinking = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("scrollChatToBottom");
+    }
+
+    private async Task UseSuggestion(string suggestion)
+    {
+        inputMessage = suggestion;
+        await SendMessage();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+            await SendMessage();
+    }
+
+}

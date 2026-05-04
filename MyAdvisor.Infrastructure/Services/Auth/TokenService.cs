@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MyAdvisor.Application.Interfaces.Contracts;
-using MyAdvisor.Application.Interfaces.Repositories;
 using MyAdvisor.Application.Interfaces.Services.Auth;
 using MyAdvisor.Domain.Entities;
 using MyAdvisor.Infrastructure.Auth;
@@ -13,18 +12,18 @@ namespace MyAdvisor.Infrastructure.Services.Auth
     public class TokenService : ITokenService
     {
         private readonly JwtTokenGenerator _jwtGenerator;
-        private readonly IRefreshTokenRepository _refreshTokenRepository;
+        private readonly IRefreshTokenService _refreshTokenService;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly JwtSettings _settings;
 
         public TokenService(
             JwtTokenGenerator jwtGenerator,
-            IRefreshTokenRepository refreshTokenRepository,
+            IRefreshTokenService refreshTokenService,
             UserManager<ApplicationUser> userManager,
             IOptions<JwtSettings> jwtSettings)
         {
             _jwtGenerator = jwtGenerator;
-            _refreshTokenRepository = refreshTokenRepository;
+            _refreshTokenService = refreshTokenService;
             _userManager = userManager;
             _settings = jwtSettings.Value;
         }
@@ -40,13 +39,13 @@ namespace MyAdvisor.Infrastructure.Services.Auth
                 DateTime.UtcNow.AddDays(_settings.RefreshTokenExpirationDays)
             );
 
-            await _refreshTokenRepository.AddAsync(token);
+            await _refreshTokenService.AddAsync(token);
             return token.Token;
         }
 
         public async Task<(string accessToken, string refreshToken)> RefreshAsync(string refreshToken)
         {
-            var existingToken = await _refreshTokenRepository.GetByTokenAsync(refreshToken);
+            var existingToken = await _refreshTokenService.GetByTokenAsync(refreshToken);
 
             if (existingToken == null || !existingToken.IsActive)
                 throw new InvalidOperationException("Invalid or expired refresh token.");
@@ -65,15 +64,15 @@ namespace MyAdvisor.Infrastructure.Services.Auth
                 DateTime.UtcNow.AddDays(_settings.RefreshTokenExpirationDays)
             );
 
-            await _refreshTokenRepository.UpdateAsync(existingToken);
-            await _refreshTokenRepository.AddAsync(newRefreshToken);
+            await _refreshTokenService.UpdateAsync(existingToken);
+            await _refreshTokenService.AddAsync(newRefreshToken);
 
             return (_jwtGenerator.GenerateToken(user), newRefreshToken.Token);
         }
 
         public async Task RevokeAsync(string refreshToken, int userId)
         {
-            var existingToken = await _refreshTokenRepository.GetByTokenAsync(refreshToken);
+            var existingToken = await _refreshTokenService.GetByTokenAsync(refreshToken);
 
             if (existingToken == null || !existingToken.IsActive)
                 throw new InvalidOperationException("Invalid or already revoked token.");
@@ -82,7 +81,7 @@ namespace MyAdvisor.Infrastructure.Services.Auth
                 throw new UnauthorizedAccessException("Token does not belong to user.");
 
             existingToken.Revoke();
-            await _refreshTokenRepository.UpdateAsync(existingToken);
+            await _refreshTokenService.UpdateAsync(existingToken);
         }
     }
 }

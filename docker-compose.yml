@@ -12,6 +12,44 @@ services:
       - "3306:3306"
     volumes:
       - myadvisor_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "myadvisor", "-pmyadvisor123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: MyAdvisor.Api/Dockerfile
+    container_name: myadvisor_api
+    restart: unless-stopped
+    ports:
+      - "5027:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Server=myadvisor_mysql;Port=3306;Database=MyAdvisorDb;User=myadvisor;Password=myadvisor123;"
+      JwtSettings__SecretKey: "change-this-to-a-long-random-secret-key-32chars"
+      JwtSettings__Issuer: "MyAdvisor"
+      JwtSettings__Audience: "MyAdvisorUsers"
+      JwtSettings__AccessTokenExpirationMinutes: "15"
+      JwtSettings__RefreshTokenExpirationDays: "7"
+      GeminiSettings__ApiKey: ${GEMINI_API_KEY}
+      GeminiSettings__Model: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  client:
+    build:
+      context: .
+      dockerfile: MyAdvisor.Client/Dockerfile
+    container_name: myadvisor_client
+    restart: unless-stopped
+    ports:
+      - "5103:80"
+    depends_on:
+      - api
 
 volumes:
   myadvisor_mysql_data:

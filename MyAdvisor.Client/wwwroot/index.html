@@ -23,6 +23,16 @@
         <span class="dismiss">🗙</span>
     </div>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script>
+        function scrollChatToBottom() {
+            var el = document.getElementById('chat-messages');
+            if (el) el.scrollTop = el.scrollHeight;
+        }
+        function triggerFileInput(id) {
+            var el = document.getElementById(id);
+            if (el) el.click();
+        }
+    </script>
 </body>
 
 </html>

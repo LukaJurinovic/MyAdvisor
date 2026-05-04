@@ -20,22 +20,31 @@ namespace MyAdvisor.Api.Controllers
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
         {
+            var userId = ResolveUserId();
+            if (userId is null) return Unauthorized();
+
             try
             {
-                var transaction = await _diaryTransactionService.GetByIdAsync(id);
+                var transaction = await _diaryTransactionService.GetByIdAsync(id, userId.Value);
                 return Ok(transaction);
             }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new ErrorResponse(ex.Message));
-            }
+            catch (KeyNotFoundException ex) { return NotFound(new ErrorResponse(ex.Message)); }
+            catch (UnauthorizedAccessException) { return Forbid(); }
         }
 
         [HttpGet("diary/{diaryId:int}")]
         public async Task<IActionResult> GetByDiaryId(int diaryId)
         {
-            var transactions = await _diaryTransactionService.GetByDiaryIdAsync(diaryId);
-            return Ok(transactions);
+            var userId = ResolveUserId();
+            if (userId is null) return Unauthorized();
+
+            try
+            {
+                var transactions = await _diaryTransactionService.GetByDiaryIdAsync(diaryId, userId.Value);
+                return Ok(transactions);
+            }
+            catch (KeyNotFoundException ex) { return NotFound(new ErrorResponse(ex.Message)); }
+            catch (UnauthorizedAccessException) { return Forbid(); }
         }
 
         [HttpPost]

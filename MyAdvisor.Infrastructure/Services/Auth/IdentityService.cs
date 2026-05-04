@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Identity;
 using MyAdvisor.Application.Interfaces.Contracts;
+using MyAdvisor.Application.Interfaces.Services.Auth;
 using MyAdvisor.Infrastructure.Identity;
 
 namespace MyAdvisor.Infrastructure.Services.Auth
 {
-    public class IdentityService
+    public class IdentityService : IIdentityService
     {
         private readonly UserManager<ApplicationUser> _userManager;
 

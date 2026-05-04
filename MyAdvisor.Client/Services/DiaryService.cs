@@ -15,8 +15,19 @@ public class DiaryService(HttpClient http)
 
     public async Task<FinancialDiaryModel> CreateAsync(CreateDiaryModel model)
     {
-        var res = await http.PostAsJsonAsync("/api/financialdiary", model);
+        var res = await http.PostAsJsonAsync("/api/financialdiary", new
+        {
+            date = model.Date.ToString("yyyy-MM-dd"),
+            notes = model.Notes
+        });
         await ThrowIfErrorAsync(res, "Failed to create diary.");
+        return (await res.Content.ReadFromJsonAsync<FinancialDiaryModel>())!;
+    }
+
+    public async Task<FinancialDiaryModel> UpdateAsync(int id, string? notes)
+    {
+        var res = await http.PutAsJsonAsync($"/api/financialdiary/{id}", new { notes });
+        await ThrowIfErrorAsync(res, "Failed to update diary.");
         return (await res.Content.ReadFromJsonAsync<FinancialDiaryModel>())!;
     }
 

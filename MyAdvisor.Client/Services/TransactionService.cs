@@ -6,6 +6,13 @@ namespace MyAdvisor.Client.Services;
 
 public class TransactionService(HttpClient http)
 {
+    public async Task<TransactionModel> GetByIdAsync(int id)
+    {
+        var res = await http.GetAsync($"/api/transaction/{id}");
+        await ThrowIfErrorAsync(res, "Failed to load transaction.");
+        return (await res.Content.ReadFromJsonAsync<TransactionModel>())!;
+    }
+
     public async Task<List<TransactionModel>> GetByDiaryIdAsync(int diaryId)
     {
         var res = await http.GetAsync($"/api/transaction/diary/{diaryId}");

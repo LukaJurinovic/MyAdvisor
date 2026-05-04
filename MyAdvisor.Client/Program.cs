@@ -27,5 +27,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<DiaryService>();
 builder.Services.AddScoped<TransactionService>();
 builder.Services.AddScoped<CategoryService>();
+builder.Services.AddScoped<AiImportService>();
+builder.Services.AddScoped<ChatService>();
 
 await builder.Build().RunAsync();

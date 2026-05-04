@@ -1,17 +1,18 @@
 @page "/diary"
-@inject AuthService AuthService
+@inherits AuthenticatedPageBase
+@using MyAdvisor.Client.Models.AI
 @inject DiaryService DiaryService
 @inject TransactionService TransactionService
 @inject CategoryService CategoryService
-@inject NavigationManager Nav
+@inject AiImportService AiImportService
 @inject IJSRuntime JS
 
-<nav class="bg-white border-b border-[#E5E7EB] px-8 py-4 flex items-center justify-between">
-    <span class="text-xl font-semibold text-gray-900">MyAdvisor</span>
-    <button @onclick="LogoutAsync" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-        Log out
-    </button>
-</nav>
+<AppNavBar OnLogout="LogoutAsync">
+    <RightContent>
+        <a href="/chat" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">💬 AI Advisor</a>
+        <a href="/features" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">Features</a>
+    </RightContent>
+</AppNavBar>
 
 <main class="max-w-5xl mx-auto px-4 py-8">
     <div class="flex items-center justify-between mb-6">
@@ -99,6 +100,13 @@
                                 class="px-3 py-1.5 text-sm font-medium text-slate-700 border border-[#E5E7EB] rounded-md hover:bg-gray-50 transition-colors">
                                 @(isExpanded ? "Hide" : "Transactions")
                             </button>
+                            <button @onclick="() => TriggerAiImport(diary.Id)"
+                                disabled="@(aiImportingDiaryId == diary.Id)"
+                                class="px-3 py-1.5 text-sm font-medium text-violet-700 border border-violet-200 rounded-md hover:bg-violet-50 transition-colors disabled:opacity-50">
+                                @(aiImportingDiaryId == diary.Id ? "Reading..." : "📷 AI Import")
+                            </button>
+                            <InputFile id="@($"ai-file-{diary.Id}")" OnChange="@(e => HandleAiFileSelected(e, diary.Id))"
+                                accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
                             <button @onclick="() => DeleteDiaryAsync(diary.Id)"
                                 class="px-3 py-1.5 text-sm font-medium text-red-500 border border-red-200 rounded-md hover:bg-red-50 transition-colors">
                                 Delete
@@ -303,6 +311,94 @@
     }
 </main>
 
+@if (aiPreview is not null)
+{
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div class="px-6 py-4 border-b border-[#E5E7EB] flex items-center justify-between">
+                <h2 class="text-base font-semibold text-gray-900">AI Import Preview</h2>
+                <button @onclick="CancelAiImport" class="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+            </div>
+
+            <div class="overflow-y-auto flex-1 px-6 py-4 flex flex-col gap-4">
+
+                <div class="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <span class="text-sm text-gray-600 font-medium">This document is:</span>
+                    <div class="flex rounded-lg border border-[#E5E7EB] overflow-hidden text-sm font-medium">
+                        <button @onclick="() => SetPaymentDirection(false)"
+                            class="@(importAsExpense ? "bg-slate-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50") px-4 py-1.5 transition-colors">
+                            💸 I paid (expense)
+                        </button>
+                        <button @onclick="() => SetPaymentDirection(true)"
+                            class="@(!importAsExpense ? "bg-emerald-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50") px-4 py-1.5 transition-colors">
+                            💰 I received (income)
+                        </button>
+                    </div>
+                </div>
+                @if (aiPreview.NewCategorySuggestions.Any())
+                {
+                    <div class="bg-violet-50 border border-violet-200 rounded-xl p-4">
+                        <p class="text-sm font-semibold text-violet-800 mb-2">New categories suggested by AI</p>
+                        <p class="text-xs text-violet-600 mb-3">Check the ones you want to create:</p>
+                        <div class="flex flex-col gap-2">
+                            @foreach (var cat in aiPreview.NewCategorySuggestions)
+                            {
+                                <label class="flex items-center gap-2 text-sm text-violet-900 cursor-pointer">
+                                    <input type="checkbox" checked="@approvedNewCategories.Contains(cat)"
+                                        @onchange="e => ToggleNewCategory(cat, (bool)e.Value!)" />
+                                    @cat
+                                </label>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div>
+                    <p class="text-sm font-semibold text-gray-700 mb-2">Transactions found (@aiPreview.PendingTransactions.Count)</p>
+                    <p class="text-xs text-gray-400 mb-3">Uncheck any you don't want to import:</p>
+                    <div class="flex flex-col gap-2">
+                        @foreach (var tx in aiPreview.PendingTransactions)
+                        {
+                            <div class="flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-lg border border-[#E5E7EB]">
+                                <input type="checkbox" @bind="tx.Approved" class="mt-0.5" />
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm text-gray-800 truncate">@(tx.Description ?? "—")</p>
+                                    <p class="text-xs text-gray-400">
+                                        @tx.TransactionDate?.ToString("MMM dd, yyyy") · @tx.PaymentMethod
+                                        @if (!string.IsNullOrEmpty(tx.CategoryName))
+                                        {
+                                            <span> · <span class="@(tx.IsNewCategory ? "text-violet-600 font-medium" : "")">@tx.CategoryName@(tx.IsNewCategory ? " (new)" : "")</span></span>
+                                        }
+                                    </p>
+                                </div>
+                                <span class="text-sm font-semibold @(GetDisplayAmount(tx) >= 0 ? "text-emerald-600" : "text-slate-900") whitespace-nowrap">
+                                    @(GetDisplayAmount(tx) >= 0 ? "+" : "")@GetDisplayAmount(tx).ToString("N2")€
+                                </span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(aiImportError))
+            {
+                <div class="px-6 py-2 bg-red-50 text-red-600 text-sm border-t border-red-100">@aiImportError</div>
+            }
+
+            <div class="px-6 py-4 border-t border-[#E5E7EB] flex justify-end gap-2">
+                <button @onclick="CancelAiImport"
+                    class="px-4 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-md hover:bg-gray-50 transition-colors">
+                    Cancel
+                </button>
+                <button @onclick="ConfirmAiImport" disabled="@aiConfirming"
+                    class="px-4 py-2 bg-violet-700 text-white text-sm font-medium rounded-md hover:bg-violet-800 transition-colors disabled:opacity-50">
+                    @(aiConfirming ? "Importing..." : $"Import {aiPreview.PendingTransactions.Count(t => t.Approved)} transactions")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<FinancialDiaryModel> diaries = [];
     private List<CategoryModel> categories = [];
@@ -324,15 +420,118 @@
     private CreateDiaryModel createModel = new();
     private UpdateTransactionModel editTxModel = new();
 
-    protected override async Task OnInitializedAsync()
+    private int? aiImportingDiaryId;
+    private AiImportPreviewModel? aiPreview;
+    private int aiPreviewDiaryId;
+    private HashSet<string> approvedNewCategories = [];
+    private bool aiConfirming;
+    private string aiImportError = "";
+    private bool importAsExpense = true;
+
+    private void SetPaymentDirection(bool isIncome)
     {
+        importAsExpense = !isIncome;
+    }
+
+    private decimal GetDisplayAmount(PendingTransactionModel tx)
+    {
+        if (tx.Amount > 0) return tx.Amount;
+        var abs = Math.Abs(tx.Amount);
+        return importAsExpense ? -abs : abs;
+    }
+
+    private async Task TriggerAiImport(int diaryId)
+    {
+        await JS.InvokeVoidAsync("triggerFileInput", $"ai-file-{diaryId}");
+    }
+
+    private async Task HandleAiFileSelected(InputFileChangeEventArgs e, int diaryId)
+    {
+        var file = e.File;
+        if (file is null) return;
+
+        pageError = "";
+        aiImportingDiaryId = diaryId;
+        StateHasChanged();
+
         try
         {
-            if (!await AuthService.IsAuthenticatedAsync())
+            using var stream = file.OpenReadStream(20 * 1024 * 1024);
+            var preview = await AiImportService.PreviewAsync(diaryId, stream, file.Name, file.ContentType);
+            aiPreview = preview;
+            aiPreviewDiaryId = diaryId;
+            approvedNewCategories = preview.NewCategorySuggestions.ToHashSet();
+        }
+        catch (Exception ex)
+        {
+            pageError = $"AI import failed: {ex.Message}";
+        }
+
+        aiImportingDiaryId = null;
+    }
+
+    private void ToggleNewCategory(string name, bool approved)
+    {
+        if (approved) approvedNewCategories.Add(name);
+        else approvedNewCategories.Remove(name);
+    }
+
+    private void CancelAiImport()
+    {
+        aiPreview = null;
+        aiImportError = "";
+        approvedNewCategories = [];
+        importAsExpense = true;
+    }
+
+    private async Task ConfirmAiImport()
+    {
+        if (aiPreview is null) return;
+
+        aiConfirming = true;
+        aiImportError = "";
+
+        try
+        {
+            var approved = aiPreview.PendingTransactions.Where(t => t.Approved).ToList();
+            foreach (var t in approved)
             {
-                Nav.NavigateTo("/login");
-                return;
+                if (t.Amount > 0) continue;
+                var abs = Math.Abs(t.Amount);
+                t.Amount = importAsExpense ? -abs : abs;
             }
+
+            var request = new AiConfirmImportRequest
+            {
+                DiaryId = aiPreviewDiaryId,
+                ApprovedTransactions = approved,
+                ApprovedNewCategories = approvedNewCategories.ToList()
+            };
+
+            await AiImportService.ConfirmAsync(request);
+
+            if (expandedDiaryIds.Contains(aiPreviewDiaryId))
+            {
+                transactionsByDiary[aiPreviewDiaryId] = await TransactionService.GetByDiaryIdAsync(aiPreviewDiaryId);
+            }
+
+            await LoadDiariesAsync();
+            await LoadCategoriesAsync();
+            CancelAiImport();
+        }
+        catch (Exception ex)
+        {
+            aiImportError = ex.Message;
+        }
+
+        aiConfirming = false;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        try
+        {
             await Task.WhenAll(LoadDiariesAsync(), LoadCategoriesAsync());
         }
         catch (Exception ex)
@@ -541,7 +740,7 @@
     }
 
     private static string FormatAmountValue(decimal amount)
-        => amount > 0 ? amount.ToString("F2") : "";
+        => amount != 0 ? amount.ToString("F2") : "";
 
     private static decimal ParseAmountInput(string? input)
     {
@@ -554,9 +753,4 @@
     private string? GetCategoryName(int? categoryId)
         => categoryId is null ? null : categories.FirstOrDefault(c => c.Id == categoryId)?.Name;
 
-    private async Task LogoutAsync()
-    {
-        await AuthService.LogoutAsync();
-        Nav.NavigateTo("/login");
-    }
 }
