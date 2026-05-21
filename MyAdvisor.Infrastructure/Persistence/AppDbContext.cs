@@ -79,6 +79,10 @@ namespace MyAdvisor.Infrastructure.Persistence
                 .HasConversion<string>();
 
             modelBuilder.Entity<RecurringTransaction>()
+                .Property(r => r.PaymentMethod)
+                .HasConversion<string>();
+
+            modelBuilder.Entity<RecurringTransaction>()
                 .HasOne(r => r.User)
                 .WithMany()
                 .HasForeignKey(r => r.UserId);
