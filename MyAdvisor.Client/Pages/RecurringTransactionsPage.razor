@@ -1,0 +1,419 @@
+@page "/recurring"
+@inherits AuthenticatedPageBase
+@using MyAdvisor.Client.Models.RecurringTransaction
+@inject RecurringTransactionService RecurringTransactionService
+@inject CategoryService CategoryService
+@inject IJSRuntime JS
+
+<AppNavBar OnLogout="LogoutAsync">
+    <RightContent>
+        <a href="/diary" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">Financial Diary</a>
+        <a href="/chat" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">💬 AI Advisor</a>
+    </RightContent>
+</AppNavBar>
+
+<main class="max-w-4xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Recurring Transactions</h1>
+            <p class="text-sm text-gray-400 mt-0.5">Manage your scheduled income and expenses</p>
+        </div>
+        <button @onclick="ToggleCreateForm"
+            class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors">
+            + New Recurring
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(pageError))
+    {
+        <div class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
+            @pageError
+        </div>
+    }
+
+    @if (showCreateForm)
+    {
+        <div class="bg-white border border-[#E5E7EB] rounded-xl p-6 mb-6 shadow-[0_4px_6px_-1px_rgb(0_0_0/0.1)]">
+            <h2 class="text-sm font-semibold text-gray-700 mb-4">New Recurring Transaction</h2>
+            <EditForm Model="createModel" OnValidSubmit="CreateAsync" class="flex flex-col gap-3">
+                <DataAnnotationsValidator />
+                <div class="flex gap-3 flex-wrap">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-sm font-medium text-gray-700">Amount</label>
+                        <div class="relative flex items-center">
+                            <input type="text" inputmode="decimal"
+                                value="@FormatAmountValue(createModel.Amount)"
+                                placeholder="0.00"
+                                @onchange="@(e => createModel.Amount = ParseAmountInput(e.Value?.ToString()))"
+                                class="w-28 px-3 py-2 pr-7 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition" />
+                            <span class="absolute right-2.5 text-sm text-gray-400 pointer-events-none select-none">€</span>
+                        </div>
+                        <ValidationMessage For="@(() => createModel.Amount)" class="text-xs text-red-500" />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-sm font-medium text-gray-700">Frequency</label>
+                        <select @bind="createModel.Frequency"
+                            class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition">
+                            <option value="" disabled selected>Select frequency</option>
+                            <option value="Daily">Daily</option>
+                            <option value="Weekly">Weekly</option>
+                            <option value="Monthly">Monthly</option>
+                            <option value="Yearly">Yearly</option>
+                        </select>
+                        <ValidationMessage For="@(() => createModel.Frequency)" class="text-xs text-red-500" />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-sm font-medium text-gray-700">Category</label>
+                        <select @bind="createModel.CategoryId"
+                            class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition">
+                            <option value="" disabled selected>Select category</option>
+                            @foreach (var root in categories.Where(c => c.ParentCategoryId == null))
+                            {
+                                var subs = categories.Where(c => c.ParentCategoryId == root.Id).ToList();
+                                @if (subs.Any())
+                                {
+                                    <option value="" disabled>@root.Name</option>
+                                    @foreach (var sub in subs)
+                                    {
+                                        <option value="@sub.Id">— @sub.Name</option>
+                                    }
+                                }
+                                else
+                                {
+                                    <option value="@root.Id">@root.Name</option>
+                                }
+                            }
+                        </select>
+                        <ValidationMessage For="@(() => createModel.CategoryId)" class="text-xs text-red-500" />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-sm font-medium text-gray-700">Payment Method</label>
+                        <select @bind="createModel.PaymentMethod"
+                            class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition">
+                            <option value="">Any</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Card">Card</option>
+                            <option value="Transfer">Transfer</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1 flex-1 min-w-36">
+                        <label class="text-sm font-medium text-gray-700">Description</label>
+                        <InputText @bind-Value="createModel.Description" placeholder="e.g. Netflix subscription"
+                            class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition" />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-sm font-medium text-gray-700">Next Due Date</label>
+                        <InputDate @bind-Value="createModel.NextDueDate"
+                            class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition" />
+                    </div>
+                </div>
+                <div class="flex gap-2 justify-end">
+                    <button type="button" @onclick="ToggleCreateForm"
+                        class="px-4 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-md hover:bg-gray-50 transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit" disabled="@createLoading"
+                        class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-60">
+                        @(createLoading ? "Saving..." : "Save")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    }
+
+    @if (loading)
+    {
+        <p class="text-sm text-gray-400 text-center py-12">Loading...</p>
+    }
+    else if (!items.Any())
+    {
+        <p class="text-sm text-gray-400 text-center py-12">No recurring transactions yet. Create your first one.</p>
+    }
+    else
+    {
+        <div class="flex flex-col gap-3">
+            @foreach (var item in items.OrderBy(i => i.NextDueDate ?? DateTime.MaxValue))
+            {
+                @if (editingId == item.Id)
+                {
+                    <div class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-[0_4px_6px_-1px_rgb(0_0_0/0.1)]">
+                        <h3 class="text-sm font-semibold text-gray-700 mb-3">Edit Recurring Transaction</h3>
+                        <EditForm Model="editModel" OnValidSubmit="() => SaveEditAsync(item.Id)">
+                            <DataAnnotationsValidator />
+                            <div class="flex gap-3 flex-wrap">
+                                <div class="flex flex-col gap-1">
+                                    <div class="relative flex items-center">
+                                        <input type="text" inputmode="decimal"
+                                            value="@FormatAmountValue(editModel.Amount)"
+                                            placeholder="0.00"
+                                            @onchange="@(e => editModel.Amount = ParseAmountInput(e.Value?.ToString()))"
+                                            class="w-28 px-3 py-2 pr-7 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition" />
+                                        <span class="absolute right-2.5 text-sm text-gray-400 pointer-events-none select-none">€</span>
+                                    </div>
+                                    <ValidationMessage For="@(() => editModel.Amount)" class="text-xs text-red-500" />
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <select @bind="editModel.Frequency"
+                                        class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition">
+                                        <option value="" disabled>Select frequency</option>
+                                        <option value="Daily">Daily</option>
+                                        <option value="Weekly">Weekly</option>
+                                        <option value="Monthly">Monthly</option>
+                                        <option value="Yearly">Yearly</option>
+                                    </select>
+                                    <ValidationMessage For="@(() => editModel.Frequency)" class="text-xs text-red-500" />
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <select @bind="editModel.CategoryId"
+                                        class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition">
+                                        <option value="" disabled>Select category</option>
+                                        @foreach (var root in categories.Where(c => c.ParentCategoryId == null))
+                                        {
+                                            var subs = categories.Where(c => c.ParentCategoryId == root.Id).ToList();
+                                            @if (subs.Any())
+                                            {
+                                                <option value="" disabled>@root.Name</option>
+                                                @foreach (var sub in subs)
+                                                {
+                                                    <option value="@sub.Id">— @sub.Name</option>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <option value="@root.Id">@root.Name</option>
+                                            }
+                                        }
+                                    </select>
+                                    <ValidationMessage For="@(() => editModel.CategoryId)" class="text-xs text-red-500" />
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <select @bind="editModel.PaymentMethod"
+                                        class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition">
+                                        <option value="">Any</option>
+                                        <option value="Cash">Cash</option>
+                                        <option value="Card">Card</option>
+                                        <option value="Transfer">Transfer</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="flex flex-col gap-1 flex-1 min-w-36">
+                                    <InputText @bind-Value="editModel.Description" placeholder="Description"
+                                        class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition" />
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <InputDate @bind-Value="editModel.NextDueDate"
+                                        class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition" />
+                                </div>
+                                <div class="flex gap-2 items-end">
+                                    <button type="button" @onclick="CancelEdit"
+                                        class="px-3 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-md hover:bg-gray-50 transition-colors">
+                                        Cancel
+                                    </button>
+                                    <button type="submit" disabled="@editLoading"
+                                        class="px-3 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-60">
+                                        @(editLoading ? "Saving..." : "Save")
+                                    </button>
+                                </div>
+                            </div>
+                        </EditForm>
+                    </div>
+                }
+                else
+                {
+                    <div class="bg-white border border-[#E5E7EB] rounded-xl px-5 py-4 shadow-[0_4px_6px_-1px_rgb(0_0_0/0.1)] flex items-center justify-between gap-4">
+                        <div class="flex items-center gap-4 min-w-0">
+                            <div class="flex-shrink-0 w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+                                <span class="text-lg">@FrequencyIcon(item.Frequency)</span>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-sm font-semibold text-gray-900 truncate">@(item.Description ?? "—")</p>
+                                <p class="text-xs text-gray-400 mt-0.5">
+                                    @item.Frequency
+                                    @if (GetCategoryName(item.CategoryId) is { } catName)
+                                    {
+                                        <span> · @catName</span>
+                                    }
+                                    @if (item.NextDueDate.HasValue)
+                                    {
+                                        <span class="@(item.NextDueDate.Value.Date <= DateTime.Today ? "text-red-500 font-medium" : "")">
+                                            · due @item.NextDueDate.Value.ToString("MMM dd, yyyy")
+                                        </span>
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 flex-shrink-0">
+                            <span class="text-sm font-semibold text-slate-900">@item.Amount.ToString("N2")€</span>
+                            <button @onclick="() => StartEdit(item)"
+                                class="px-3 py-1.5 text-xs font-medium text-slate-700 border border-[#E5E7EB] rounded-md hover:bg-gray-50 transition-colors">
+                                Edit
+                            </button>
+                            <button @onclick="() => DeleteAsync(item.Id)"
+                                class="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200 rounded-md hover:bg-red-50 transition-colors">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    }
+</main>
+
+@code {
+    private List<RecurringTransactionModel> items = [];
+    private List<CategoryModel> categories = [];
+
+    private bool loading;
+    private bool showCreateForm;
+    private bool createLoading;
+    private bool editLoading;
+    private int? editingId;
+    private string pageError = "";
+
+    private CreateRecurringTransactionModel createModel = new();
+    private UpdateRecurringTransactionModel editModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        try
+        {
+            await Task.WhenAll(LoadItemsAsync(), LoadCategoriesAsync());
+        }
+        catch (Exception ex)
+        {
+            pageError = $"Initialization error: {ex.Message}";
+        }
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        loading = true;
+        try
+        {
+            items = await RecurringTransactionService.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            pageError = $"Failed to load recurring transactions: {ex.Message}";
+        }
+        loading = false;
+    }
+
+    private async Task LoadCategoriesAsync()
+    {
+        try
+        {
+            categories = await CategoryService.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            pageError = $"Failed to load categories: {ex.Message}";
+        }
+    }
+
+    private void ToggleCreateForm()
+    {
+        showCreateForm = !showCreateForm;
+        createModel = new() { NextDueDate = DateTime.Today };
+    }
+
+    private async Task CreateAsync()
+    {
+        pageError = "";
+        createLoading = true;
+        try
+        {
+            var created = await RecurringTransactionService.CreateAsync(createModel);
+            items.Add(created);
+            showCreateForm = false;
+            createModel = new();
+        }
+        catch (Exception ex)
+        {
+            pageError = $"Failed to create: {ex.Message}";
+        }
+        createLoading = false;
+    }
+
+    private void StartEdit(RecurringTransactionModel item)
+    {
+        editingId = item.Id;
+        editModel = new()
+        {
+            CategoryId = item.CategoryId,
+            Amount = item.Amount,
+            Frequency = item.Frequency,
+            PaymentMethod = item.PaymentMethod,
+            NextDueDate = item.NextDueDate,
+            Description = item.Description
+        };
+    }
+
+    private void CancelEdit()
+    {
+        editingId = null;
+        editModel = new();
+    }
+
+    private async Task SaveEditAsync(int id)
+    {
+        pageError = "";
+        editLoading = true;
+        try
+        {
+            var updated = await RecurringTransactionService.UpdateAsync(id, editModel);
+            var idx = items.FindIndex(i => i.Id == id);
+            if (idx >= 0) items[idx] = updated;
+            CancelEdit();
+        }
+        catch (Exception ex)
+        {
+            pageError = $"Failed to update: {ex.Message}";
+        }
+        editLoading = false;
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Delete this recurring transaction?"))
+            return;
+
+        pageError = "";
+        try
+        {
+            await RecurringTransactionService.DeleteAsync(id);
+            items.RemoveAll(i => i.Id == id);
+            if (editingId == id) CancelEdit();
+        }
+        catch (Exception ex)
+        {
+            pageError = $"Failed to delete: {ex.Message}";
+        }
+    }
+
+    private string? GetCategoryName(int categoryId)
+        => categories.FirstOrDefault(c => c.Id == categoryId)?.Name;
+
+    private static string FrequencyIcon(string frequency) => frequency switch
+    {
+        "Daily" => "📅",
+        "Weekly" => "📆",
+        "Monthly" => "🗓",
+        "Yearly" => "📊",
+        _ => "🔄"
+    };
+
+    private static string FormatAmountValue(decimal amount)
+        => amount != 0 ? amount.ToString("F2") : "";
+
+    private static decimal ParseAmountInput(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return 0;
+        return decimal.TryParse(input.Replace(',', '.'),
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
+    }
+}

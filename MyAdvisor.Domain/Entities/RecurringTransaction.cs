@@ -9,6 +9,7 @@ namespace MyAdvisor.Domain.Entities
         public int CategoryId { get; private set; }
         public decimal Amount { get; private set; }
         public Frequency Frequency { get; private set; }
+        public PaymentMethod? PaymentMethod { get; private set; }
         public DateTime? NextDueDate { get; private set; }
         public string? Description { get; private set; }
         public User? User { get; private set; }
@@ -21,6 +22,7 @@ namespace MyAdvisor.Domain.Entities
             int categoryId,
             decimal amount,
             Frequency frequency,
+            PaymentMethod? paymentMethod = null,
             DateTime? nextDueDate = null,
             string? description = null)
         {
@@ -33,10 +35,32 @@ namespace MyAdvisor.Domain.Entities
             if (amount <= 0)
                 throw new ArgumentException("Amount must be greater than zero.", nameof(amount));
 
-UserId = userId;
+            UserId = userId;
             CategoryId = categoryId;
             Amount = amount;
             Frequency = frequency;
+            PaymentMethod = paymentMethod;
+            NextDueDate = nextDueDate;
+            Description = description;
+        }
+
+        public void Update(
+            decimal amount,
+            int categoryId,
+            Frequency frequency,
+            PaymentMethod? paymentMethod,
+            DateTime? nextDueDate,
+            string? description)
+        {
+            if (amount <= 0)
+                throw new ArgumentException("Amount must be greater than zero.", nameof(amount));
+            if (categoryId <= 0)
+                throw new ArgumentException("Invalid categoryId.", nameof(categoryId));
+
+            Amount = amount;
+            CategoryId = categoryId;
+            Frequency = frequency;
+            PaymentMethod = paymentMethod;
             NextDueDate = nextDueDate;
             Description = description;
         }

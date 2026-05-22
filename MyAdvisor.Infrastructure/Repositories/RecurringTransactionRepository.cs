@@ -20,6 +20,11 @@ namespace MyAdvisor.Infrastructure.Repositories
         public async Task<IReadOnlyList<RecurringTransaction>> GetByUserIdAsync(int userId)
             => await _db.RecurringTransactions.Where(r => r.UserId == userId).ToListAsync();
 
+        public async Task<IReadOnlyList<RecurringTransaction>> GetAllDueAsync(DateTime asOf)
+            => await _db.RecurringTransactions
+                .Where(r => r.NextDueDate.HasValue && r.NextDueDate.Value.Date <= asOf.Date)
+                .ToListAsync();
+
         public async Task AddAsync(RecurringTransaction recurringTransaction)
         {
             await _db.RecurringTransactions.AddAsync(recurringTransaction);

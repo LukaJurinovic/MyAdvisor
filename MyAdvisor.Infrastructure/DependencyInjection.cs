@@ -64,6 +64,7 @@ namespace MyAdvisor.Infrastructure
             services.AddSingleton<CategoryMapper>();
             services.AddSingleton<FinancialDiaryMapper>();
             services.AddSingleton<TransactionMapper>();
+            services.AddSingleton<RecurringTransactionMapper>();
 
             // Identity services
             services.AddScoped<IIdentityService, IdentityService>();
@@ -77,6 +78,7 @@ namespace MyAdvisor.Infrastructure
             services.AddScoped<IFinancialDiaryService, FinancialDiaryService>();
             services.AddScoped<ITransactionService, TransactionService>();
             services.AddScoped<ITransactionAiLogService, TransactionAiLogService>();
+            services.AddScoped<IRecurringTransactionService, RecurringTransactionService>();
 
             // App services
             services.AddScoped<IDiaryTransactionService, DiaryTransactionService>();
@@ -104,6 +106,7 @@ namespace MyAdvisor.Infrastructure
 
             // Background services
             services.AddHostedService<RefreshTokenCleanupService>();
+            services.AddHostedService<RecurringTransactionProcessorService>();
 
             return services;
         }

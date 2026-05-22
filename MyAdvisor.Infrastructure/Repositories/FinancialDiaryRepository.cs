@@ -34,6 +34,11 @@ namespace MyAdvisor.Infrastructure.Repositories
         public Task<FinancialDiary?> GetByUserIdAndDateAsync(int userId, DateTime date)
             => _db.FinancialDiaries.FirstOrDefaultAsync(d => d.UserId == userId && d.Date == date.Date);
 
+        public Task<FinancialDiary?> GetByUserIdAndDateWithTransactionsAsync(int userId, DateTime date)
+            => _db.FinancialDiaries
+                .Include(d => d.Transactions)
+                .FirstOrDefaultAsync(d => d.UserId == userId && d.Date == date.Date);
+
         public async Task AddAsync(FinancialDiary diary)
         {
             await _db.FinancialDiaries.AddAsync(diary);
