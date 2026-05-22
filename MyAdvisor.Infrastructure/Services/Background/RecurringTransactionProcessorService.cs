@@ -1,8 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using MyAdvisor.Application.Interfaces.Repositories;
-using MyAdvisor.Domain.Entities;
+using MyAdvisor.Application.DTOs.RecurringTransaction;
+using MyAdvisor.Application.DTOs.Transaction;
+using MyAdvisor.Application.Interfaces.Services.Domain;
 using MyAdvisor.Domain.Enums;
 
 namespace MyAdvisor.Infrastructure.Services.Background
@@ -38,17 +39,17 @@ namespace MyAdvisor.Infrastructure.Services.Background
             try
             {
                 using var scope = _scopeFactory.CreateScope();
-                var recurringRepo = scope.ServiceProvider.GetRequiredService<IRecurringTransactionRepository>();
-                var diaryRepo = scope.ServiceProvider.GetRequiredService<IFinancialDiaryRepository>();
+                var recurringService = scope.ServiceProvider.GetRequiredService<IRecurringTransactionService>();
+                var diaryService = scope.ServiceProvider.GetRequiredService<IFinancialDiaryService>();
 
-                var due = await recurringRepo.GetAllDueAsync(DateTime.UtcNow);
+                var due = await recurringService.GetAllDueAsync(DateTime.UtcNow);
                 if (!due.Any()) return;
 
                 _logger.LogInformation("Processing {Count} due recurring transaction(s).", due.Count);
 
                 foreach (var recurring in due)
                 {
-                    await ProcessOneAsync(recurring, recurringRepo, diaryRepo);
+                    await ProcessOneAsync(recurring, recurringService, diaryService);
                 }
             }
             catch (Exception ex)
@@ -58,45 +59,38 @@ namespace MyAdvisor.Infrastructure.Services.Background
         }
 
         private async Task ProcessOneAsync(
-            RecurringTransaction recurring,
-            IRecurringTransactionRepository recurringRepo,
-            IFinancialDiaryRepository diaryRepo)
+            RecurringTransactionDto recurring,
+            IRecurringTransactionService recurringService,
+            IFinancialDiaryService diaryService)
         {
             var dueDate = recurring.NextDueDate!.Value;
             var today = DateTime.UtcNow.Date;
+            var frequency = Enum.Parse<Frequency>(recurring.Frequency);
+            var paymentMethod = Enum.TryParse<PaymentMethod>(recurring.PaymentMethod, out var pm) ? pm : (PaymentMethod?)null;
             var iterations = 0;
 
             while (dueDate.Date <= today && iterations < MaxOccurrencesPerRun)
             {
                 iterations++;
 
-                var diary = await diaryRepo.GetByUserIdAndDateWithTransactionsAsync(recurring.UserId, dueDate.Date);
-                if (diary is null)
-                {
-                    diary = new FinancialDiary(recurring.UserId, dueDate.Date);
-                    await diaryRepo.AddAsync(diary);
-                    // reload to get the assigned Id
-                    diary = (await diaryRepo.GetByUserIdAndDateWithTransactionsAsync(recurring.UserId, dueDate.Date))!;
-                }
+                var diaryId = await diaryService.EnsureDiaryExistsAsync(recurring.UserId, dueDate.Date);
 
-                var transaction = new Transaction(
-                    diary.Id,
-                    recurring.Amount,
-                    recurring.CategoryId,
-                    recurring.Description,
-                    dueDate,
-                    recurring.PaymentMethod);
+                await diaryService.AddTransactionAsync(
+                    new AddTransactionRequestDto(
+                        diaryId,
+                        recurring.Amount,
+                        recurring.CategoryId,
+                        recurring.Description,
+                        dueDate,
+                        paymentMethod),
+                    recurring.UserId);
 
-                diary.AddTransaction(transaction);
-                await diaryRepo.UpdateAsync(diary);
-
-                dueDate = Advance(dueDate, recurring.Frequency);
+                dueDate = Advance(dueDate, frequency);
             }
 
             if (iterations > 0)
             {
-                recurring.AdvanceDueDate(dueDate);
-                await recurringRepo.UpdateAsync(recurring);
+                await recurringService.AdvanceDueDateAsync(recurring.Id, dueDate);
                 _logger.LogInformation(
                     "Created {Count} transaction(s) for recurring {Id} ('{Desc}'). Next due: {Next:yyyy-MM-dd}.",
                     iterations, recurring.Id, recurring.Description, dueDate);

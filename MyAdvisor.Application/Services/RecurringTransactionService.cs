@@ -36,6 +36,20 @@ namespace MyAdvisor.Application.Services
             return entities.Select(_mapper.ToDto).ToList();
         }
 
+        public async Task<IReadOnlyList<RecurringTransactionDto>> GetAllDueAsync(DateTime asOf)
+        {
+            var entities = await _repository.GetAllDueAsync(asOf);
+            return entities.Select(_mapper.ToDto).ToList();
+        }
+
+        public async Task AdvanceDueDateAsync(int id, DateTime newDueDate)
+        {
+            var entity = await _repository.GetByIdAsync(id)
+                ?? throw new KeyNotFoundException($"Recurring transaction {id} not found.");
+            entity.AdvanceDueDate(newDueDate);
+            await _repository.UpdateAsync(entity);
+        }
+
         public async Task<RecurringTransactionDto> CreateAsync(
             CreateRecurringTransactionRequestDto request,
             int userId)

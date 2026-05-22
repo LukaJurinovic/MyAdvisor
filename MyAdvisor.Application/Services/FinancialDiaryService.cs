@@ -63,6 +63,16 @@ namespace MyAdvisor.Application.Services
             await _diaryRepository.DeleteAsync(id);
         }
 
+        public async Task<int> EnsureDiaryExistsAsync(int userId, DateTime date)
+        {
+            var existing = await _diaryRepository.GetByUserIdAndDateAsync(userId, date.Date);
+            if (existing is not null) return existing.Id;
+
+            var diary = new FinancialDiary(userId, date.Date);
+            await _diaryRepository.AddAsync(diary);
+            return diary.Id;
+        }
+
         public async Task<TransactionDto> AddTransactionAsync(AddTransactionRequestDto request, int userId)
         {
             var diary = await _diaryRepository.GetByIdWithTransactionsAsync(request.DiaryId)

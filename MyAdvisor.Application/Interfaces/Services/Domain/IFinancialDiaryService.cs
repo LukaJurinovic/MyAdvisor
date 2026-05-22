@@ -12,6 +12,7 @@ namespace MyAdvisor.Application.Interfaces.Services.Domain
         Task<FinancialDiaryDto> UpdateAsync(int id, UpdateFinancialDiaryRequestDto request);
         Task DeleteAsync(int id);
 
+        Task<int> EnsureDiaryExistsAsync(int userId, DateTime date);
         Task<TransactionDto> AddTransactionAsync(AddTransactionRequestDto request, int userId);
         Task<TransactionDto> UpdateTransactionAsync(int diaryId, int transactionId, UpdateTransactionRequestDto request, int userId);
         Task DeleteTransactionAsync(int diaryId, int transactionId, int userId);
