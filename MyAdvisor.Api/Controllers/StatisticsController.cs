@@ -28,5 +28,15 @@ namespace MyAdvisor.Api.Controllers
             var statistic = await _spendingStatisticService.GetForMonthAsync(userId.Value, year, month);
             return Ok(statistic);
         }
+
+        [HttpGet("yearly")]
+        public async Task<IActionResult> GetYearly([FromQuery] int year)
+        {
+            var userId = ResolveUserId();
+            if (userId is null) return Unauthorized();
+
+            var statistics = await _spendingStatisticService.GetForYearAsync(userId.Value, year);
+            return Ok(statistics);
+        }
     }
 }

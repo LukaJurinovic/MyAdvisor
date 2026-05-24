@@ -13,6 +13,13 @@ public class StatisticsService(HttpClient http)
         return (await res.Content.ReadFromJsonAsync<SpendingStatisticModel>())!;
     }
 
+    public async Task<List<SpendingStatisticModel>> GetYearlyAsync(int year)
+    {
+        var res = await http.GetAsync($"/api/statistics/yearly?year={year}");
+        await ThrowIfErrorAsync(res, "Failed to load yearly spending statistics.");
+        return await res.Content.ReadFromJsonAsync<List<SpendingStatisticModel>>() ?? [];
+    }
+
     private static async Task ThrowIfErrorAsync(HttpResponseMessage res, string fallback)
     {
         if (res.IsSuccessStatusCode) return;

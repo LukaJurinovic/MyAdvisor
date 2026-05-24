@@ -16,16 +16,24 @@
     <div class="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Spending Statistics</h1>
-            <p class="text-sm text-gray-400 mt-0.5">@MonthName(selectedMonth) @selectedYear</p>
+            <p class="text-sm text-gray-400 mt-0.5">@PeriodLabel()</p>
         </div>
-        <div class="flex gap-2 items-center">
-            <select value="@selectedMonth" @onchange="ChangeMonth"
+        <div class="flex gap-2 items-center justify-end flex-wrap">
+            <select value="@viewMode" @onchange="ChangeViewMode"
                 class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white">
-                @for (var month = 1; month <= 12; month++)
-                {
-                    <option value="@month">@MonthName(month)</option>
-                }
+                <option value="@MonthlyMode">Monthly</option>
+                <option value="@YearlyMode">Yearly</option>
             </select>
+            @if (viewMode == MonthlyMode)
+            {
+                <select value="@selectedMonth" @onchange="ChangeMonth"
+                    class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white">
+                    @for (var month = 1; month <= 12; month++)
+                    {
+                        <option value="@month">@MonthName(month)</option>
+                    }
+                </select>
+            }
             <select value="@selectedYear" @onchange="ChangeYear"
                 class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white">
                 @foreach (var year in Years)
@@ -33,17 +41,20 @@
                     <option value="@year">@year</option>
                 }
             </select>
-            <select value="@selectedCategoryKey" @onchange="ChangeCategory"
-                class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white">
-                <option value="@AllCategoriesKey">All spending</option>
-                @if (statistic is not null)
-                {
-                    @foreach (var item in statistic.CategoryBreakdown)
+            @if (viewMode == MonthlyMode)
+            {
+                <select value="@selectedCategoryKey" @onchange="ChangeCategory"
+                    class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white">
+                    <option value="@AllCategoriesKey">All spending</option>
+                    @if (statistic is not null)
                     {
-                        <option value="@CategoryKey(item)">@item.CategoryName</option>
+                        @foreach (var item in statistic.CategoryBreakdown)
+                        {
+                            <option value="@CategoryKey(item)">@item.CategoryName</option>
+                        }
                     }
-                }
-            </select>
+                </select>
+            }
         </div>
     </div>
 
@@ -57,6 +68,127 @@
     @if (loading)
     {
         <p class="text-sm text-gray-400 text-center py-12">Loading...</p>
+    }
+    else if (viewMode == YearlyMode)
+    {
+        var yearlySpent = YearlyTotalSpent();
+        var yearlyIncome = YearlyTotalIncome();
+        var yearlyNet = yearlyIncome - yearlySpent;
+        var yearlySpendingBreakdown = YearlyBreakdown(income: false);
+        var yearlyIncomeBreakdown = YearlyBreakdown(income: true);
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm">
+                <p class="text-xs font-semibold uppercase text-gray-400">Year spent</p>
+                <p class="text-3xl font-bold text-gray-900 mt-2">@yearlySpent.ToString("N2")€</p>
+                <p class="text-sm text-gray-400 mt-2">@selectedYear</p>
+            </section>
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm">
+                <p class="text-xs font-semibold uppercase text-gray-400">Year income</p>
+                <p class="text-3xl font-bold text-emerald-700 mt-2">@yearlyIncome.ToString("N2")€</p>
+                <p class="text-sm text-gray-400 mt-2">@yearlyIncomeBreakdown.Count categories</p>
+            </section>
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm">
+                <p class="text-xs font-semibold uppercase text-gray-400">Year net</p>
+                <p class="text-3xl font-bold @(yearlyNet >= 0 ? "text-emerald-700" : "text-red-600") mt-2">
+                    @FormatSignedCurrency(yearlyNet)
+                </p>
+                <p class="text-sm text-gray-400 mt-2">Annual balance</p>
+            </section>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-5">
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm h-fit">
+                <h2 class="text-sm font-semibold text-gray-700 mb-4">Annual Spending Mix</h2>
+                @if (yearlySpent == 0 || !yearlySpendingBreakdown.Any())
+                {
+                    <p class="text-sm text-gray-400 text-center py-10">No spending recorded for this year.</p>
+                }
+                else
+                {
+                    <div class="relative w-56 h-56 mx-auto mb-5">
+                        <div class="w-full h-full rounded-full border border-[#E5E7EB]" style="@PieStyle(yearlySpendingBreakdown)"></div>
+                        <div class="absolute inset-8 rounded-full bg-white border border-[#E5E7EB] flex flex-col items-center justify-center text-center px-3">
+                            <p class="text-xs text-gray-400">Spent</p>
+                            <p class="text-lg font-bold text-gray-900">@yearlySpent.ToString("N2")€</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        @for (var i = 0; i < yearlySpendingBreakdown.Count; i++)
+                        {
+                            var item = yearlySpendingBreakdown[i];
+                            <div class="flex items-center justify-between gap-3 rounded-md px-2 py-1.5">
+                                <span class="flex items-center gap-2 min-w-0">
+                                    <span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: @ChartColor(i)"></span>
+                                    <span class="text-sm text-gray-700 truncate">@item.CategoryName</span>
+                                </span>
+                                <span class="text-xs text-gray-400 whitespace-nowrap">@item.Percentage.ToString("N2")%</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm">
+                <h2 class="text-sm font-semibold text-gray-700 mb-4">Monthly Overview</h2>
+                @if (!yearlyStatistics.Any(s => s.TotalSpent > 0 || s.TotalIncome > 0))
+                {
+                    <p class="text-sm text-gray-400 text-center py-10">No transactions recorded for this year.</p>
+                }
+                else
+                {
+                    <div class="flex flex-col gap-4">
+                        @foreach (var month in yearlyStatistics)
+                        {
+                            <div>
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <p class="text-sm font-medium text-gray-900">@MonthName(month.Month)</p>
+                                    <p class="text-xs text-gray-400">
+                                        Spent @month.TotalSpent.ToString("N2")€ · Income @month.TotalIncome.ToString("N2")€ · Net @FormatSignedCurrency(month.NetAmount)
+                                    </p>
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                        <div class="h-full bg-slate-700 rounded-full" style="width: @YearlyBarWidth(month.TotalSpent)"></div>
+                                    </div>
+                                    <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                        <div class="h-full bg-emerald-500 rounded-full" style="width: @YearlyBarWidth(month.TotalIncome)"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm lg:col-span-2">
+                <h2 class="text-sm font-semibold text-gray-700 mb-4">Annual Income Breakdown</h2>
+                @if (yearlyIncome == 0 || !yearlyIncomeBreakdown.Any())
+                {
+                    <p class="text-sm text-gray-400 text-center py-8">No income recorded for this year.</p>
+                }
+                else
+                {
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        @foreach (var item in yearlyIncomeBreakdown)
+                        {
+                            <div>
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <p class="text-sm font-medium text-gray-900 truncate">@item.CategoryName</p>
+                                    <span class="text-sm font-semibold text-emerald-700 whitespace-nowrap">
+                                        @item.TotalAmount.ToString("N2")€
+                                    </span>
+                                </div>
+                                <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div class="h-full bg-emerald-500 rounded-full" style="width: @PercentageWidth(item.Percentage)"></div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
     }
     else if (statistic is null)
     {
@@ -207,6 +339,8 @@
 
 @code {
     private const string AllCategoriesKey = "all";
+    private const string MonthlyMode = "monthly";
+    private const string YearlyMode = "yearly";
     private static readonly string[] ChartColors =
     [
         "#10B981",
@@ -220,11 +354,13 @@
     ];
 
     private SpendingStatisticModel? statistic;
+    private List<SpendingStatisticModel> yearlyStatistics = [];
     private bool loading;
     private string pageError = "";
     private int selectedMonth = DateTime.Today.Month;
     private int selectedYear = DateTime.Today.Year;
     private string selectedCategoryKey = AllCategoriesKey;
+    private string viewMode = MonthlyMode;
 
     private IEnumerable<int> Years => Enumerable.Range(DateTime.Today.Year - 5, 7).Reverse();
 
@@ -252,6 +388,13 @@
         }
     }
 
+    private async Task ChangeViewMode(ChangeEventArgs e)
+    {
+        viewMode = e.Value?.ToString() == YearlyMode ? YearlyMode : MonthlyMode;
+        selectedCategoryKey = AllCategoriesKey;
+        await LoadStatisticsAsync();
+    }
+
     private async Task LoadStatisticsAsync()
     {
         loading = true;
@@ -259,17 +402,27 @@
 
         try
         {
-            statistic = await StatisticsService.GetMonthlyAsync(selectedYear, selectedMonth);
-            if (selectedCategoryKey != AllCategoriesKey &&
-                !statistic.CategoryBreakdown.Any(item => CategoryKey(item) == selectedCategoryKey))
+            if (viewMode == YearlyMode)
             {
-                selectedCategoryKey = AllCategoriesKey;
+                yearlyStatistics = await StatisticsService.GetYearlyAsync(selectedYear);
+                statistic = null;
+            }
+            else
+            {
+                statistic = await StatisticsService.GetMonthlyAsync(selectedYear, selectedMonth);
+                yearlyStatistics = [];
+                if (selectedCategoryKey != AllCategoriesKey &&
+                    !statistic.CategoryBreakdown.Any(item => CategoryKey(item) == selectedCategoryKey))
+                {
+                    selectedCategoryKey = AllCategoriesKey;
+                }
             }
         }
         catch (Exception ex)
         {
             pageError = ex.Message;
             statistic = null;
+            yearlyStatistics = [];
         }
 
         loading = false;
@@ -277,6 +430,9 @@
 
     private static string MonthName(int month)
         => CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month);
+
+    private string PeriodLabel()
+        => viewMode == YearlyMode ? selectedYear.ToString(CultureInfo.CurrentCulture) : $"{MonthName(selectedMonth)} {selectedYear}";
 
     private void SelectCategory(CategoryBreakdownModel item)
         => selectedCategoryKey = CategoryKey(item);
@@ -337,4 +493,41 @@
 
     private static string FormatSignedCurrency(decimal value)
         => $"{(value >= 0 ? "+" : "")}{value.ToString("N2")}€";
+
+    private decimal YearlyTotalSpent()
+        => yearlyStatistics.Sum(s => s.TotalSpent);
+
+    private decimal YearlyTotalIncome()
+        => yearlyStatistics.Sum(s => s.TotalIncome);
+
+    private IReadOnlyList<CategoryBreakdownModel> YearlyBreakdown(bool income)
+    {
+        var items = yearlyStatistics.SelectMany(s => income ? s.IncomeBreakdown : s.CategoryBreakdown);
+        var total = income ? YearlyTotalIncome() : YearlyTotalSpent();
+
+        return items
+            .GroupBy(item => new { item.CategoryId, item.CategoryName })
+            .Select(g =>
+            {
+                var categoryTotal = g.Sum(item => item.TotalAmount);
+                return new CategoryBreakdownModel(
+                    g.Key.CategoryId,
+                    g.Key.CategoryName,
+                    categoryTotal,
+                    total == 0 ? 0 : Math.Round(categoryTotal / total * 100, 2));
+            })
+            .OrderByDescending(item => item.TotalAmount)
+            .ThenBy(item => item.CategoryName)
+            .ToList();
+    }
+
+    private string YearlyBarWidth(decimal amount)
+    {
+        var max = yearlyStatistics
+            .SelectMany(s => new[] { s.TotalSpent, s.TotalIncome })
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return max == 0 ? "0%" : PercentageWidth(amount / max * 100);
+    }
 }

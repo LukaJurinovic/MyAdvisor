@@ -31,6 +31,38 @@ namespace MyAdvisor.Application.Services
             var categoryNames = categories.ToDictionary(c => c.Id, c => c.Name);
             var incomeCategoryIds = GetIncomeCategoryIds(categories);
 
+            return BuildStatistic(year, month, transactions, categoryNames, incomeCategoryIds);
+        }
+
+        public async Task<IReadOnlyList<SpendingStatisticDto>> GetForYearAsync(int userId, int year)
+        {
+            var diaries = await _diaryService.GetAllWithTransactionsAsync(userId);
+            var transactions = diaries
+                .SelectMany(d => d.Transactions)
+                .Where(t => t.TransactionDate.Year == year)
+                .ToList();
+
+            var categories = await _categoryService.GetAllAsync();
+            var categoryNames = categories.ToDictionary(c => c.Id, c => c.Name);
+            var incomeCategoryIds = GetIncomeCategoryIds(categories);
+
+            return Enumerable.Range(1, 12)
+                .Select(month => BuildStatistic(
+                    year,
+                    month,
+                    transactions.Where(t => t.TransactionDate.Month == month).ToList(),
+                    categoryNames,
+                    incomeCategoryIds))
+                .ToList();
+        }
+
+        private static SpendingStatisticDto BuildStatistic(
+            int year,
+            int month,
+            IReadOnlyList<TransactionDto> transactions,
+            IReadOnlyDictionary<int, string> categoryNames,
+            IReadOnlySet<int> incomeCategoryIds)
+        {
             var spendingTransactions = transactions
                 .Where(t => !IsIncomeCategory(t.CategoryId, incomeCategoryIds))
                 .ToList();
