@@ -1,0 +1,340 @@
+@page "/statistics"
+@inherits AuthenticatedPageBase
+@using System.Globalization
+@inject StatisticsService StatisticsService
+
+<AppNavBar OnLogout="LogoutAsync">
+    <RightContent>
+        <a href="/diary" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">Diary</a>
+        <a href="/recurring" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">Recurring</a>
+        <a href="/chat" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">AI Advisor</a>
+        <a href="/features" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">Features</a>
+    </RightContent>
+</AppNavBar>
+
+<main class="max-w-5xl mx-auto px-4 py-8">
+    <div class="flex items-start justify-between gap-4 mb-6 flex-wrap">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Spending Statistics</h1>
+            <p class="text-sm text-gray-400 mt-0.5">@MonthName(selectedMonth) @selectedYear</p>
+        </div>
+        <div class="flex gap-2 items-center">
+            <select value="@selectedMonth" @onchange="ChangeMonth"
+                class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white">
+                @for (var month = 1; month <= 12; month++)
+                {
+                    <option value="@month">@MonthName(month)</option>
+                }
+            </select>
+            <select value="@selectedYear" @onchange="ChangeYear"
+                class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white">
+                @foreach (var year in Years)
+                {
+                    <option value="@year">@year</option>
+                }
+            </select>
+            <select value="@selectedCategoryKey" @onchange="ChangeCategory"
+                class="px-3 py-2 border border-[#E5E7EB] rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white">
+                <option value="@AllCategoriesKey">All spending</option>
+                @if (statistic is not null)
+                {
+                    @foreach (var item in statistic.CategoryBreakdown)
+                    {
+                        <option value="@CategoryKey(item)">@item.CategoryName</option>
+                    }
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(pageError))
+    {
+        <div class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
+            @pageError
+        </div>
+    }
+
+    @if (loading)
+    {
+        <p class="text-sm text-gray-400 text-center py-12">Loading...</p>
+    }
+    else if (statistic is null)
+    {
+        <p class="text-sm text-gray-400 text-center py-12">No statistics available.</p>
+    }
+    else
+    {
+        var displayedBreakdown = DisplayedBreakdown();
+        var selectedCategory = SelectedCategory();
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm">
+                <p class="text-xs font-semibold uppercase text-gray-400">Total spent</p>
+                <p class="text-3xl font-bold text-gray-900 mt-2">@statistic.TotalSpent.ToString("N2")€</p>
+                <p class="text-sm text-gray-400 mt-2">@statistic.CategoryBreakdown.Count categories</p>
+            </section>
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm">
+                <p class="text-xs font-semibold uppercase text-gray-400">Income</p>
+                <p class="text-3xl font-bold text-emerald-700 mt-2">@statistic.TotalIncome.ToString("N2")€</p>
+                <p class="text-sm text-gray-400 mt-2">@statistic.IncomeBreakdown.Count categories</p>
+            </section>
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm">
+                <p class="text-xs font-semibold uppercase text-gray-400">Net</p>
+                <p class="text-3xl font-bold @(statistic.NetAmount >= 0 ? "text-emerald-700" : "text-red-600") mt-2">
+                    @FormatSignedCurrency(statistic.NetAmount)
+                </p>
+                <p class="text-sm text-gray-400 mt-2">@MonthName(selectedMonth) balance</p>
+            </section>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-5">
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm h-fit">
+                <h2 class="text-sm font-semibold text-gray-700 mb-4">Spending Mix</h2>
+                @if (statistic.TotalSpent == 0 || !statistic.CategoryBreakdown.Any())
+                {
+                    <p class="text-sm text-gray-400 text-center py-10">No spending recorded for this month.</p>
+                }
+                else
+                {
+                    <div class="relative w-56 h-56 mx-auto mb-5">
+                        <div class="w-full h-full rounded-full border border-[#E5E7EB]" style="@PieStyle(statistic.CategoryBreakdown)"></div>
+                        <div class="absolute inset-8 rounded-full bg-white border border-[#E5E7EB] flex flex-col items-center justify-center text-center px-3">
+                            <p class="text-xs text-gray-400">Spent</p>
+                            <p class="text-lg font-bold text-gray-900">@statistic.TotalSpent.ToString("N2")€</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        @for (var i = 0; i < statistic.CategoryBreakdown.Count; i++)
+                        {
+                            var item = statistic.CategoryBreakdown[i];
+                            <button type="button" @onclick="() => SelectCategory(item)"
+                                class="flex items-center justify-between gap-3 text-left rounded-md px-2 py-1.5 hover:bg-gray-50 transition-colors">
+                                <span class="flex items-center gap-2 min-w-0">
+                                    <span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: @ChartColor(i)"></span>
+                                    <span class="text-sm text-gray-700 truncate">@item.CategoryName</span>
+                                </span>
+                                <span class="text-xs text-gray-400 whitespace-nowrap">@item.Percentage.ToString("N2")%</span>
+                            </button>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-700">Category Breakdown</h2>
+                    @if (selectedCategory is not null)
+                    {
+                        <button type="button" @onclick="ClearCategory"
+                            class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                            Show all
+                        </button>
+                    }
+                </div>
+
+                @if (statistic.TotalSpent == 0 || !displayedBreakdown.Any())
+                {
+                    <p class="text-sm text-gray-400 text-center py-10">No spending recorded for this month.</p>
+                }
+                else
+                {
+                    <div class="flex flex-col gap-4">
+                        @foreach (var item in displayedBreakdown)
+                        {
+                            <div>
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-medium text-gray-900 truncate">@item.CategoryName</p>
+                                        <p class="text-xs text-gray-400">@item.Percentage.ToString("N2")%</p>
+                                    </div>
+                                    <span class="text-sm font-semibold text-slate-900 whitespace-nowrap">
+                                        @item.TotalAmount.ToString("N2")€
+                                    </span>
+                                </div>
+                                <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div class="h-full bg-emerald-500 rounded-full" style="width: @PercentageWidth(item.Percentage)"></div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (selectedCategory is not null)
+                {
+                    <div class="border-t border-[#E5E7EB] mt-5 pt-4">
+                        <p class="text-xs font-semibold uppercase text-gray-400">Selected category</p>
+                        <div class="flex items-end justify-between gap-4 mt-2">
+                            <div class="min-w-0">
+                                <p class="text-base font-semibold text-gray-900 truncate">@selectedCategory.CategoryName</p>
+                                <p class="text-sm text-gray-400">@selectedCategory.Percentage.ToString("N2")% of spending</p>
+                            </div>
+                            <p class="text-2xl font-bold text-gray-900 whitespace-nowrap">@selectedCategory.TotalAmount.ToString("N2")€</p>
+                        </div>
+                    </div>
+                }
+            </section>
+
+            <section class="bg-white border border-[#E5E7EB] rounded-xl p-5 shadow-sm lg:col-span-2">
+                <h2 class="text-sm font-semibold text-gray-700 mb-4">Income Breakdown</h2>
+                @if (statistic.TotalIncome == 0 || !statistic.IncomeBreakdown.Any())
+                {
+                    <p class="text-sm text-gray-400 text-center py-8">No income recorded for this month.</p>
+                }
+                else
+                {
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        @foreach (var item in statistic.IncomeBreakdown)
+                        {
+                            <div>
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <p class="text-sm font-medium text-gray-900 truncate">@item.CategoryName</p>
+                                    <span class="text-sm font-semibold text-emerald-700 whitespace-nowrap">
+                                        @item.TotalAmount.ToString("N2")€
+                                    </span>
+                                </div>
+                                <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div class="h-full bg-emerald-500 rounded-full" style="width: @PercentageWidth(item.Percentage)"></div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</main>
+
+@code {
+    private const string AllCategoriesKey = "all";
+    private static readonly string[] ChartColors =
+    [
+        "#10B981",
+        "#3B82F6",
+        "#F59E0B",
+        "#EF4444",
+        "#8B5CF6",
+        "#14B8A6",
+        "#F97316",
+        "#64748B"
+    ];
+
+    private SpendingStatisticModel? statistic;
+    private bool loading;
+    private string pageError = "";
+    private int selectedMonth = DateTime.Today.Month;
+    private int selectedYear = DateTime.Today.Year;
+    private string selectedCategoryKey = AllCategoriesKey;
+
+    private IEnumerable<int> Years => Enumerable.Range(DateTime.Today.Year - 5, 7).Reverse();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await LoadStatisticsAsync();
+    }
+
+    private async Task ChangeMonth(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var month))
+        {
+            selectedMonth = month;
+            await LoadStatisticsAsync();
+        }
+    }
+
+    private async Task ChangeYear(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var year))
+        {
+            selectedYear = year;
+            await LoadStatisticsAsync();
+        }
+    }
+
+    private async Task LoadStatisticsAsync()
+    {
+        loading = true;
+        pageError = "";
+
+        try
+        {
+            statistic = await StatisticsService.GetMonthlyAsync(selectedYear, selectedMonth);
+            if (selectedCategoryKey != AllCategoriesKey &&
+                !statistic.CategoryBreakdown.Any(item => CategoryKey(item) == selectedCategoryKey))
+            {
+                selectedCategoryKey = AllCategoriesKey;
+            }
+        }
+        catch (Exception ex)
+        {
+            pageError = ex.Message;
+            statistic = null;
+        }
+
+        loading = false;
+    }
+
+    private static string MonthName(int month)
+        => CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month);
+
+    private void SelectCategory(CategoryBreakdownModel item)
+        => selectedCategoryKey = CategoryKey(item);
+
+    private void ClearCategory()
+        => selectedCategoryKey = AllCategoriesKey;
+
+    private void ChangeCategory(ChangeEventArgs e)
+        => selectedCategoryKey = e.Value?.ToString() ?? AllCategoriesKey;
+
+    private IReadOnlyList<CategoryBreakdownModel> DisplayedBreakdown()
+    {
+        if (statistic is null) return [];
+        if (selectedCategoryKey == AllCategoriesKey) return statistic.CategoryBreakdown;
+        return statistic.CategoryBreakdown.Where(item => CategoryKey(item) == selectedCategoryKey).ToList();
+    }
+
+    private CategoryBreakdownModel? SelectedCategory()
+    {
+        if (statistic is null || selectedCategoryKey == AllCategoriesKey) return null;
+        return statistic.CategoryBreakdown.FirstOrDefault(item => CategoryKey(item) == selectedCategoryKey);
+    }
+
+    private static string CategoryKey(CategoryBreakdownModel item)
+        => item.CategoryId.HasValue ? $"category-{item.CategoryId.Value}" : "uncategorized";
+
+    private static string PercentageWidth(decimal percentage)
+    {
+        var width = Math.Clamp(percentage, 0, 100);
+        return $"{width.ToString("0.##", CultureInfo.InvariantCulture)}%";
+    }
+
+    private static string PieStyle(IReadOnlyList<CategoryBreakdownModel> items)
+    {
+        if (!items.Any()) return "background: #F3F4F6;";
+
+        var start = 0m;
+        var segments = new List<string>();
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            var end = Math.Clamp(start + items[i].Percentage, 0, 100);
+            segments.Add($"{ChartColor(i)} {FormatPercent(start)}% {FormatPercent(end)}%");
+            start = end;
+        }
+
+        if (start < 100)
+            segments.Add($"#F3F4F6 {FormatPercent(start)}% 100%");
+
+        return $"background: conic-gradient({string.Join(", ", segments)});";
+    }
+
+    private static string ChartColor(int index)
+        => ChartColors[index % ChartColors.Length];
+
+    private static string FormatPercent(decimal value)
+        => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string FormatSignedCurrency(decimal value)
+        => $"{(value >= 0 ? "+" : "")}{value.ToString("N2")}€";
+}

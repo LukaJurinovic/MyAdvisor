@@ -82,6 +82,7 @@ namespace MyAdvisor.Infrastructure
 
             // App services
             services.AddScoped<IDiaryTransactionService, DiaryTransactionService>();
+            services.AddScoped<ISpendingStatisticService, SpendingStatisticService>();
             services.AddScoped<IAiTransactionImportService, AiTransactionImportService>();
             services.AddScoped<IFinancialChatService, FinancialChatService>();
 
