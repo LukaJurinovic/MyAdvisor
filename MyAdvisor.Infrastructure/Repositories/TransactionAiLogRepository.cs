@@ -14,12 +14,6 @@ namespace MyAdvisor.Infrastructure.Repositories
             _db = db;
         }
 
-        public Task<TransactionAiLog?> GetByIdAsync(int id)
-            => _db.TransactionAiLogs.FirstOrDefaultAsync(l => l.Id == id);
-
-        public async Task<IReadOnlyList<TransactionAiLog>> GetByTransactionIdAsync(int transactionId)
-            => await _db.TransactionAiLogs.Where(l => l.TransactionId == transactionId).ToListAsync();
-
         public async Task AddAsync(TransactionAiLog log)
         {
             await _db.TransactionAiLogs.AddAsync(log);

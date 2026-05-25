@@ -13,13 +13,6 @@ public class RecurringTransactionService(HttpClient http)
         return await res.Content.ReadFromJsonAsync<List<RecurringTransactionModel>>() ?? [];
     }
 
-    public async Task<RecurringTransactionModel> GetByIdAsync(int id)
-    {
-        var res = await http.GetAsync($"/api/recurringtransaction/{id}");
-        await ThrowIfErrorAsync(res, "Failed to load recurring transaction.");
-        return (await res.Content.ReadFromJsonAsync<RecurringTransactionModel>())!;
-    }
-
     public async Task<RecurringTransactionModel> CreateAsync(CreateRecurringTransactionModel model)
     {
         var res = await http.PostAsJsonAsync("/api/recurringtransaction", new

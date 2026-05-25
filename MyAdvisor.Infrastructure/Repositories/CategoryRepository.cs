@@ -14,17 +14,8 @@ namespace MyAdvisor.Infrastructure.Repositories
             _db = db;
         }
 
-        public Task<Category?> GetByIdAsync(int id)
-            => _db.Categories.FirstOrDefaultAsync(c => c.Id == id);
-
         public async Task<IReadOnlyList<Category>> GetAllAsync()
             => await _db.Categories.ToListAsync();
-
-        public async Task<IReadOnlyList<Category>> GetRootCategoriesAsync()
-            => await _db.Categories.Where(c => c.ParentCategoryId == null).ToListAsync();
-
-        public async Task<IReadOnlyList<Category>> GetSubCategoriesAsync(int parentId)
-            => await _db.Categories.Where(c => c.ParentCategoryId == parentId).ToListAsync();
 
         public async Task AddAsync(Category category)
         {

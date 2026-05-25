@@ -49,7 +49,14 @@ namespace MyAdvisor.Infrastructure.Services.Background
 
                 foreach (var recurring in due)
                 {
-                    await ProcessOneAsync(recurring, recurringService, diaryService);
+                    try
+                    {
+                        await ProcessOneAsync(recurring, recurringService, diaryService);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to process recurring transaction {Id}.", recurring.Id);
+                    }
                 }
             }
             catch (Exception ex)
@@ -72,6 +79,7 @@ namespace MyAdvisor.Infrastructure.Services.Background
             while (dueDate.Date <= today && iterations < MaxOccurrencesPerRun)
             {
                 iterations++;
+                var nextDueDate = Advance(dueDate, frequency);
 
                 var diaryId = await diaryService.EnsureDiaryExistsAsync(recurring.UserId, dueDate.Date);
 
@@ -85,16 +93,14 @@ namespace MyAdvisor.Infrastructure.Services.Background
                         paymentMethod),
                     recurring.UserId);
 
-                dueDate = Advance(dueDate, frequency);
+                await recurringService.AdvanceDueDateAsync(recurring.Id, nextDueDate);
+                dueDate = nextDueDate;
             }
 
             if (iterations > 0)
-            {
-                await recurringService.AdvanceDueDateAsync(recurring.Id, dueDate);
                 _logger.LogInformation(
                     "Created {Count} transaction(s) for recurring {Id} ('{Desc}'). Next due: {Next:yyyy-MM-dd}.",
                     iterations, recurring.Id, recurring.Description, dueDate);
-            }
         }
 
         private static DateTime Advance(DateTime date, Frequency frequency) => frequency switch

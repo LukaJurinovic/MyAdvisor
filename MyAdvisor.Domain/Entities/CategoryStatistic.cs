@@ -4,35 +4,29 @@ namespace MyAdvisor.Domain.Entities
     {
         public int Id { get; private set; }
         public int StatisticsId { get; private set; }
-        public int CategoryId { get; private set; }
+        public int? CategoryId { get; private set; }
+        public string CategoryName { get; private set; } = string.Empty;
         public decimal TotalAmount { get; private set; }
+        public decimal Percentage { get; private set; }
+        public bool IsIncome { get; private set; }
         public SpendingStatistic? Statistics { get; private set; }
         public Category? Category { get; private set; }
 
         private CategoryStatistic() { }
 
-        public CategoryStatistic(int statisticsId, int categoryId, decimal totalAmount)
+        public CategoryStatistic(SpendingStatistic statistics, int? categoryId, string categoryName,
+            decimal totalAmount, decimal percentage, bool isIncome)
         {
-            if (statisticsId <= 0)
-                throw new ArgumentException("Invalid statisticsId.", nameof(statisticsId));
-
-            if (categoryId <= 0)
-                throw new ArgumentException("Invalid categoryId.", nameof(categoryId));
-
+            ArgumentNullException.ThrowIfNull(statistics);
             if (totalAmount < 0)
                 throw new ArgumentException("TotalAmount cannot be negative.", nameof(totalAmount));
 
-            StatisticsId = statisticsId;
+            Statistics = statistics;
             CategoryId = categoryId;
+            CategoryName = categoryName ?? string.Empty;
             TotalAmount = totalAmount;
-        }
-
-        public void AddAmount(decimal amount)
-        {
-            if (amount < 0)
-                throw new ArgumentException("Amount cannot be negative.", nameof(amount));
-
-            TotalAmount += amount;
+            Percentage = percentage;
+            IsIncome = isIncome;
         }
     }
 }

@@ -17,18 +17,6 @@ namespace MyAdvisor.Application.Services
             _mapper = mapper;
         }
 
-        public async Task<UserDto?> GetByIdAsync(int id)
-        {
-            var user = await _userRepository.GetByIdAsync(id);
-            return user is null ? null : _mapper.ToDto(user);
-        }
-
-        public async Task<UserDto?> GetByEmailAsync(string email)
-        {
-            var user = await _userRepository.GetByEmailAsync(email);
-            return user is null ? null : _mapper.ToDto(user);
-        }
-
         public async Task<UserDto> CreateAsync(string username, string email)
         {
             var user = new User(username, email);
