@@ -14,12 +14,6 @@ namespace MyAdvisor.Infrastructure.Repositories
             _db = db;
         }
 
-        public Task<User?> GetByIdAsync(int id)
-            => _db.DomainUsers.FirstOrDefaultAsync(u => u.Id == id);
-
-        public Task<User?> GetByEmailAsync(string email)
-            => _db.DomainUsers.FirstOrDefaultAsync(u => u.Email == email);
-
         public async Task AddAsync(User user)
         {
             await _db.DomainUsers.AddAsync(user);

@@ -1,149 +1,63 @@
 using MyAdvisor.Application.DTOs.Statistics;
-using MyAdvisor.Application.DTOs.Transaction;
-using MyAdvisor.Application.DTOs.Category;
-using MyAdvisor.Application.Interfaces.Services.App;
+using MyAdvisor.Application.Interfaces.Repositories;
 using MyAdvisor.Application.Interfaces.Services.Domain;
+using MyAdvisor.Domain.Entities;
 
 namespace MyAdvisor.Application.Services
 {
     public class SpendingStatisticService : ISpendingStatisticService
     {
-        private readonly IFinancialDiaryService _diaryService;
-        private readonly ICategoryService _categoryService;
+        private readonly ISpendingStatisticRepository _repository;
 
-        public SpendingStatisticService(
-            IFinancialDiaryService diaryService,
-            ICategoryService categoryService)
+        public SpendingStatisticService(ISpendingStatisticRepository repository)
         {
-            _diaryService = diaryService;
-            _categoryService = categoryService;
+            _repository = repository;
         }
 
         public async Task<SpendingStatisticDto> GetForMonthAsync(int userId, int year, int month)
         {
-            var diaries = await _diaryService.GetAllWithTransactionsAsync(userId);
-            var transactions = diaries
-                .SelectMany(d => d.Transactions)
-                .Where(t => t.TransactionDate.Year == year && t.TransactionDate.Month == month)
-                .ToList();
-
-            var categories = await _categoryService.GetAllAsync();
-            var categoryNames = categories.ToDictionary(c => c.Id, c => c.Name);
-            var incomeCategoryIds = GetIncomeCategoryIds(categories);
-
-            return BuildStatistic(year, month, transactions, categoryNames, incomeCategoryIds);
+            var stat = await _repository.GetByUserIdAndPeriodAsync(userId, month, year);
+            return stat is null ? EmptyDto(year, month) : MapToDto(stat);
         }
 
         public async Task<IReadOnlyList<SpendingStatisticDto>> GetForYearAsync(int userId, int year)
         {
-            var diaries = await _diaryService.GetAllWithTransactionsAsync(userId);
-            var transactions = diaries
-                .SelectMany(d => d.Transactions)
-                .Where(t => t.TransactionDate.Year == year)
-                .ToList();
-
-            var categories = await _categoryService.GetAllAsync();
-            var categoryNames = categories.ToDictionary(c => c.Id, c => c.Name);
-            var incomeCategoryIds = GetIncomeCategoryIds(categories);
-
+            var stats = await _repository.GetByUserIdAndYearAsync(userId, year);
+            var byMonth = stats.ToDictionary(s => s.Month);
             return Enumerable.Range(1, 12)
-                .Select(month => BuildStatistic(
-                    year,
-                    month,
-                    transactions.Where(t => t.TransactionDate.Month == month).ToList(),
-                    categoryNames,
-                    incomeCategoryIds))
+                .Select(month => byMonth.TryGetValue(month, out var s) ? MapToDto(s) : EmptyDto(year, month))
                 .ToList();
         }
 
-        private static SpendingStatisticDto BuildStatistic(
-            int year,
-            int month,
-            IReadOnlyList<TransactionDto> transactions,
-            IReadOnlyDictionary<int, string> categoryNames,
-            IReadOnlySet<int> incomeCategoryIds)
+        public async Task UpsertAsync(int userId, int year, int month, decimal totalSpent, decimal totalIncome,
+            IReadOnlyList<CategoryBreakdownDto> spending, IReadOnlyList<CategoryBreakdownDto> income)
         {
-            var spendingTransactions = transactions
-                .Where(t => !IsIncomeCategory(t.CategoryId, incomeCategoryIds))
-                .ToList();
-            var incomeTransactions = transactions
-                .Where(t => IsIncomeCategory(t.CategoryId, incomeCategoryIds))
-                .ToList();
+            var stat = new SpendingStatistic(userId, month, year, totalSpent, totalIncome);
+            foreach (var item in spending)
+                stat.AddCategoryStatistic(new CategoryStatistic(stat, item.CategoryId, item.CategoryName, item.TotalAmount, item.Percentage, isIncome: false));
+            foreach (var item in income)
+                stat.AddCategoryStatistic(new CategoryStatistic(stat, item.CategoryId, item.CategoryName, item.TotalAmount, item.Percentage, isIncome: true));
 
-            var totalSpent = spendingTransactions.Sum(GetAbsoluteAmount);
-            var totalIncome = incomeTransactions.Sum(GetAbsoluteAmount);
-
-            var spendingBreakdown = BuildBreakdown(spendingTransactions, totalSpent, categoryNames);
-            var incomeBreakdown = BuildBreakdown(incomeTransactions, totalIncome, categoryNames);
-
-            return new SpendingStatisticDto(
-                year,
-                month,
-                totalSpent,
-                totalIncome,
-                totalIncome - totalSpent,
-                spendingBreakdown,
-                incomeBreakdown);
+            await _repository.ReplaceAsync(stat, userId, year, month);
         }
 
-        private static IReadOnlyList<CategoryBreakdownDto> BuildBreakdown(
-            IReadOnlyList<TransactionDto> transactions,
-            decimal total,
-            IReadOnlyDictionary<int, string> categoryNames)
-            => transactions
-                .GroupBy(t => t.CategoryId)
-                .Select(g =>
-                {
-                    var categoryTotal = g.Sum(GetAbsoluteAmount);
-                    return new CategoryBreakdownDto(
-                        g.Key,
-                        GetCategoryName(g.Key, categoryNames),
-                        categoryTotal,
-                        total == 0 ? 0 : Math.Round(categoryTotal / total * 100, 2));
-                })
-                .OrderByDescending(b => b.TotalAmount)
-                .ThenBy(b => b.CategoryName)
-                .ToList();
-
-        private static decimal GetAbsoluteAmount(TransactionDto transaction)
-            => Math.Abs(transaction.Amount);
-
-        private static string GetCategoryName(int? categoryId, IReadOnlyDictionary<int, string> categoryNames)
+        private static SpendingStatisticDto MapToDto(SpendingStatistic stat)
         {
-            if (categoryId is null)
-                return "Uncategorized";
-
-            return categoryNames.TryGetValue(categoryId.Value, out var name)
-                ? name
-                : "Unknown category";
+            var spending = stat.CategoryBreakdown
+                .Where(c => !c.IsIncome)
+                .Select(c => new CategoryBreakdownDto(c.CategoryId, c.CategoryName, c.TotalAmount, c.Percentage))
+                .OrderByDescending(c => c.TotalAmount)
+                .ToList();
+            var income = stat.CategoryBreakdown
+                .Where(c => c.IsIncome)
+                .Select(c => new CategoryBreakdownDto(c.CategoryId, c.CategoryName, c.TotalAmount, c.Percentage))
+                .OrderByDescending(c => c.TotalAmount)
+                .ToList();
+            return new SpendingStatisticDto(stat.Year, stat.Month, stat.TotalSpent, stat.TotalIncome,
+                stat.TotalIncome - stat.TotalSpent, spending, income);
         }
 
-        private static bool IsIncomeCategory(int? categoryId, IReadOnlySet<int> incomeCategoryIds)
-            => categoryId.HasValue && incomeCategoryIds.Contains(categoryId.Value);
-
-        private static IReadOnlySet<int> GetIncomeCategoryIds(IReadOnlyList<CategoryDto> categories)
-        {
-            var incomeCategoryIds = categories
-                .Where(c => string.Equals(c.Name, "Income", StringComparison.OrdinalIgnoreCase))
-                .Select(c => c.Id)
-                .ToHashSet();
-
-            var added = true;
-            while (added)
-            {
-                added = false;
-                foreach (var category in categories)
-                {
-                    if (category.ParentCategoryId.HasValue &&
-                        incomeCategoryIds.Contains(category.ParentCategoryId.Value) &&
-                        incomeCategoryIds.Add(category.Id))
-                    {
-                        added = true;
-                    }
-                }
-            }
-
-            return incomeCategoryIds;
-        }
+        private static SpendingStatisticDto EmptyDto(int year, int month)
+            => new(year, month, 0, 0, 0, [], []);
     }
 }

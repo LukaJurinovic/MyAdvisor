@@ -355,6 +355,7 @@
 
     private SpendingStatisticModel? statistic;
     private List<SpendingStatisticModel> yearlyStatistics = [];
+    private decimal yearlyMax;
     private bool loading;
     private string pageError = "";
     private int selectedMonth = DateTime.Today.Month;
@@ -405,12 +406,17 @@
             if (viewMode == YearlyMode)
             {
                 yearlyStatistics = await StatisticsService.GetYearlyAsync(selectedYear);
+                yearlyMax = yearlyStatistics
+                    .SelectMany(s => new[] { s.TotalSpent, s.TotalIncome })
+                    .DefaultIfEmpty(0)
+                    .Max();
                 statistic = null;
             }
             else
             {
                 statistic = await StatisticsService.GetMonthlyAsync(selectedYear, selectedMonth);
                 yearlyStatistics = [];
+                yearlyMax = 0;
                 if (selectedCategoryKey != AllCategoriesKey &&
                     !statistic.CategoryBreakdown.Any(item => CategoryKey(item) == selectedCategoryKey))
                 {
@@ -522,12 +528,5 @@
     }
 
     private string YearlyBarWidth(decimal amount)
-    {
-        var max = yearlyStatistics
-            .SelectMany(s => new[] { s.TotalSpent, s.TotalIncome })
-            .DefaultIfEmpty(0)
-            .Max();
-
-        return max == 0 ? "0%" : PercentageWidth(amount / max * 100);
-    }
+        => yearlyMax == 0 ? "0%" : PercentageWidth(amount / yearlyMax * 100);
 }

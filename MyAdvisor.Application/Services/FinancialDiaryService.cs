@@ -41,6 +41,9 @@ namespace MyAdvisor.Application.Services
             return diaries.Select(_mapper.ToDto).ToList();
         }
 
+        public async Task<IReadOnlyList<int>> GetDistinctUserIdsAsync()
+            => await _diaryRepository.GetDistinctUserIdsAsync();
+
         public async Task<FinancialDiaryDto> CreateAsync(CreateFinancialDiaryRequestDto request, int userId)
         {
             var diary = new FinancialDiary(userId, request.Date, request.Notes);

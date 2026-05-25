@@ -6,8 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using MyAdvisor.Application.Interfaces.Contracts;
 using MyAdvisor.Application.Interfaces.Repositories;
 using MyAdvisor.Application.Interfaces.Services.Domain;
-using MyAdvisor.Application.Interfaces.Services.Auth;
 using MyAdvisor.Application.Interfaces.Services.App;
+using MyAdvisor.Application.Interfaces.Services.Auth;
 using MyAdvisor.Application.Interfaces.Services.AI;
 using MyAdvisor.Application.Mappers;
 using MyAdvisor.Infrastructure.AI;
@@ -79,12 +79,13 @@ namespace MyAdvisor.Infrastructure
             services.AddScoped<ITransactionService, TransactionService>();
             services.AddScoped<ITransactionAiLogService, TransactionAiLogService>();
             services.AddScoped<IRecurringTransactionService, RecurringTransactionService>();
+            services.AddScoped<ISpendingStatisticService, SpendingStatisticService>();
 
             // App services
             services.AddScoped<IDiaryTransactionService, DiaryTransactionService>();
-            services.AddScoped<ISpendingStatisticService, SpendingStatisticService>();
             services.AddScoped<IAiTransactionImportService, AiTransactionImportService>();
             services.AddScoped<IFinancialChatService, FinancialChatService>();
+            services.AddScoped<ISpendingStatisticComputeService, SpendingStatisticComputeService>();
 
             // AI / Gemini
             services.Configure<GeminiSettings>(configuration.GetSection("GeminiSettings"));
@@ -108,6 +109,7 @@ namespace MyAdvisor.Infrastructure
             // Background services
             services.AddHostedService<RefreshTokenCleanupService>();
             services.AddHostedService<RecurringTransactionProcessorService>();
+            services.AddHostedService<SpendingStatisticProcessorService>();
 
             return services;
         }

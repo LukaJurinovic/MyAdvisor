@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MyAdvisor.Application.DTOs.Common;
-using MyAdvisor.Application.Interfaces.Services.App;
+using MyAdvisor.Application.Interfaces.Services.Domain;
 
 namespace MyAdvisor.Api.Controllers
 {

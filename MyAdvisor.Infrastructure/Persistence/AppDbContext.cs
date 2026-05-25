@@ -108,9 +108,14 @@ namespace MyAdvisor.Infrastructure.Persistence
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
 
             modelBuilder.Entity<CategoryStatistic>()
+                .Property(cs => cs.CategoryName)
+                .HasMaxLength(255);
+
+            modelBuilder.Entity<CategoryStatistic>()
                 .HasOne(cs => cs.Category)
                 .WithMany()
-                .HasForeignKey(cs => cs.CategoryId);
+                .HasForeignKey(cs => cs.CategoryId)
+                .IsRequired(false);
 
             modelBuilder.Entity<RefreshToken>(entity =>
             {

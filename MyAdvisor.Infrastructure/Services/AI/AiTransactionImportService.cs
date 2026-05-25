@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MyAdvisor.Application.DTOs.AI;
 using MyAdvisor.Application.DTOs.Transaction;
@@ -16,6 +17,7 @@ namespace MyAdvisor.Infrastructure.Services.AI
         private readonly IFinancialDiaryService _diaryService;
         private readonly ICategoryService _categoryService;
         private readonly ITransactionAiLogService _aiLogService;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<AiTransactionImportService> _logger;
 
@@ -24,6 +26,7 @@ namespace MyAdvisor.Infrastructure.Services.AI
             IFinancialDiaryService diaryService,
             ICategoryService categoryService,
             ITransactionAiLogService aiLogService,
+            IServiceScopeFactory scopeFactory,
             IUnitOfWork unitOfWork,
             ILogger<AiTransactionImportService> logger)
         {
@@ -31,6 +34,7 @@ namespace MyAdvisor.Infrastructure.Services.AI
             _diaryService = diaryService;
             _categoryService = categoryService;
             _aiLogService = aiLogService;
+            _scopeFactory = scopeFactory;
             _unitOfWork = unitOfWork;
             _logger = logger;
         }
@@ -117,6 +121,22 @@ namespace MyAdvisor.Infrastructure.Services.AI
                     }
                 }
             });
+
+            _logger.LogInformation(
+                "AI import done for user {UserId}: imported {Imported}/{Total}, failed {Failed}. Triggering stats recompute.",
+                userId, imported.Count, request.ApprovedTransactions.Count, failed);
+
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var computeService = scope.ServiceProvider.GetRequiredService<ISpendingStatisticComputeService>();
+                await computeService.RecomputeForUserAsync(userId);
+                _logger.LogInformation("Stats recompute completed for user {UserId}.", userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to recompute spending statistics for user {UserId} after AI import.", userId);
+            }
 
             return new AiTransactionImportResultDto(
                 ImportedTransactions: imported,
